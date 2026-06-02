@@ -35,11 +35,11 @@ endif
 ifeq ($(LTO),1)
   OPTFLAGS += -flto
 endif
-CFLAGS = -Wall $(OPTFLAGS) -ffunction-sections -fdata-sections $(ARCH) $(INCLUDE) -D__SWITCH__
+CFLAGS = -Wall $(OPTFLAGS) -ffunction-sections -fdata-sections $(ARCH) $(INCLUDE) -D__SWITCH__ -D_REENTRANT
 CXXFLAGS = $(CFLAGS) -std=gnu++17 -fno-exceptions -fno-rtti
 ASFLAGS = $(DEBUGFLAGS) $(ARCH)
 LDFLAGS = -specs=$(DEVKITPRO)/libnx/switch.specs $(DEBUGFLAGS) $(ARCH) $(if $(filter 1,$(LTO)),-flto,) -Wl,-Map,$(notdir $*.map)
-LIBS := -ldeko3dd -lnx
+LIBS := -lSDL2 -lEGL -lglapi -ldrm_nouveau -ldeko3dd -lnx -lpthread
 LIBDIRS := $(PORTLIBS) $(LIBNX)
 
 ifneq ($(BUILD),$(notdir $(CURDIR)))

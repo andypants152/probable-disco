@@ -1,7 +1,9 @@
 #pragma once
 
 #include <cstdint>
+#include <vector>
 
+#include "forest_audio.h"
 #include "game/camera.h"
 #include "platform.h"
 #include "render/mesh.h"
@@ -29,6 +31,7 @@ class App {
     std::uint64_t scene_rebuild_ns = 0;
     std::uint64_t upload_ns = 0;
     std::uint64_t render_ns = 0;
+    ForestAudioDebugStatus forest_audio = {};
     bool fox_moved = false;
     bool chunk_changed = false;
   };
@@ -42,13 +45,21 @@ class App {
   bool update_fox(const CameraInput& input);
   void update_camera(const CameraInput& input);
 
+  struct CachedTerrainChunk {
+    int chunk_x = 0;
+    int chunk_z = 0;
+    Mesh mesh;
+  };
+
   TerrainGenerator generator_;
+  std::vector<CachedTerrainChunk> terrain_chunk_cache_;
   Mesh terrain_mesh_;
   Mesh fox_mesh_;
   Mesh mesh_;
   Camera camera_;
   Vec3 fox_position_ = {};
   float fox_heading_ = 0.0f;
+  float fox_movement_speed_ = 0.0f;
   int world_center_chunk_x_ = 0;
   int world_center_chunk_z_ = 0;
   bool initialized_ = false;

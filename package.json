@@ -15,7 +15,7 @@
   "type": "commonjs",
   "scripts": {
     "build:web": "emcmake cmake -S . -B build-web -DCMAKE_BUILD_TYPE=Release && cmake --build build-web",
-    "serve:web": "python3 -m http.server 8080 -d build-web",
+    "serve:web": "emrun --no_browser --port 8080 build-web",
     "build:switch": "make -f Makefile.switch"
   }
 }

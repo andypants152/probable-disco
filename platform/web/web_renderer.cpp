@@ -116,6 +116,26 @@ bool WebRenderer::init() {
 void WebRenderer::upload_mesh(const Mesh& mesh) {
   emscripten_webgl_make_context_current(context_);
   destroy_buffers();
+  upload_buffer(static_mesh_, mesh, GL_STATIC_DRAW);
+}
+
+void WebRenderer::upload_static_mesh(const Mesh& mesh) {
+  emscripten_webgl_make_context_current(context_);
+  destroy_buffer(static_mesh_);
+  upload_buffer(static_mesh_, mesh, GL_STATIC_DRAW);
+}
+
+void WebRenderer::upload_dynamic_mesh(const Mesh& mesh) {
+  emscripten_webgl_make_context_current(context_);
+  destroy_buffer(dynamic_mesh_);
+  upload_buffer(dynamic_mesh_, mesh, GL_DYNAMIC_DRAW);
+}
+
+void WebRenderer::upload_buffer(MeshBuffer& buffer, const Mesh& mesh, GLenum usage) {
+  if (mesh.indices.empty() || mesh.vertices.empty()) {
+    buffer.index_count = 0;
+    return;
+  }
 
   std::vector<GpuVertex> gpu_vertices;
   gpu_vertices.reserve(mesh.vertices.size());
@@ -140,22 +160,22 @@ void WebRenderer::upload_mesh(const Mesh& mesh) {
     gpu_vertices.push_back(vertex);
   }
 
-  glGenVertexArrays(1, &vao_);
-  glBindVertexArray(vao_);
+  glGenVertexArrays(1, &buffer.vao);
+  glBindVertexArray(buffer.vao);
 
-  glGenBuffers(1, &vertex_buffer_);
-  glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer_);
+  glGenBuffers(1, &buffer.vertex_buffer);
+  glBindBuffer(GL_ARRAY_BUFFER, buffer.vertex_buffer);
   glBufferData(GL_ARRAY_BUFFER,
                static_cast<GLsizeiptr>(gpu_vertices.size() * sizeof(GpuVertex)),
                gpu_vertices.data(),
-               GL_STATIC_DRAW);
+               usage);
 
-  glGenBuffers(1, &index_buffer_);
-  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, index_buffer_);
+  glGenBuffers(1, &buffer.index_buffer);
+  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, buffer.index_buffer);
   glBufferData(GL_ELEMENT_ARRAY_BUFFER,
                static_cast<GLsizeiptr>(mesh.indices.size() * sizeof(Index)),
                mesh.indices.data(),
-               GL_STATIC_DRAW);
+               usage);
 
   glEnableVertexAttribArray(0);
   glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(GpuVertex),
@@ -173,12 +193,12 @@ void WebRenderer::upload_mesh(const Mesh& mesh) {
   glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, sizeof(GpuVertex),
                         reinterpret_cast<void*>(offsetof(GpuVertex, micro_position)));
 
-  index_count_ = static_cast<GLsizei>(mesh.indices.size());
+  buffer.index_count = static_cast<GLsizei>(mesh.indices.size());
   glBindVertexArray(0);
 }
 
 void WebRenderer::render_frame(const Camera& camera) {
-  if (context_ <= 0 || program_ == 0 || vao_ == 0) {
+  if (context_ <= 0 || program_ == 0) {
     return;
   }
 
@@ -197,8 +217,8 @@ void WebRenderer::render_frame(const Camera& camera) {
   glUniformMatrix4fv(view_uniform_, 1, GL_FALSE, view.m);
   glUniformMatrix4fv(projection_uniform_, 1, GL_FALSE, projection.m);
 
-  glBindVertexArray(vao_);
-  glDrawElements(GL_TRIANGLES, index_count_, GL_UNSIGNED_INT, nullptr);
+  draw_buffer(static_mesh_);
+  draw_buffer(dynamic_mesh_);
   glBindVertexArray(0);
 }
 
@@ -269,20 +289,34 @@ bool WebRenderer::create_program() {
   return true;
 }
 
+void WebRenderer::draw_buffer(const MeshBuffer& buffer) {
+  if (buffer.vao == 0 || buffer.index_count == 0) {
+    return;
+  }
+
+  glBindVertexArray(buffer.vao);
+  glDrawElements(GL_TRIANGLES, buffer.index_count, GL_UNSIGNED_INT, nullptr);
+}
+
+void WebRenderer::destroy_buffer(MeshBuffer& buffer) {
+  if (buffer.index_buffer != 0) {
+    glDeleteBuffers(1, &buffer.index_buffer);
+    buffer.index_buffer = 0;
+  }
+  if (buffer.vertex_buffer != 0) {
+    glDeleteBuffers(1, &buffer.vertex_buffer);
+    buffer.vertex_buffer = 0;
+  }
+  if (buffer.vao != 0) {
+    glDeleteVertexArrays(1, &buffer.vao);
+    buffer.vao = 0;
+  }
+  buffer.index_count = 0;
+}
+
 void WebRenderer::destroy_buffers() {
-  if (index_buffer_ != 0) {
-    glDeleteBuffers(1, &index_buffer_);
-    index_buffer_ = 0;
-  }
-  if (vertex_buffer_ != 0) {
-    glDeleteBuffers(1, &vertex_buffer_);
-    vertex_buffer_ = 0;
-  }
-  if (vao_ != 0) {
-    glDeleteVertexArrays(1, &vao_);
-    vao_ = 0;
-  }
-  index_count_ = 0;
+  destroy_buffer(static_mesh_);
+  destroy_buffer(dynamic_mesh_);
 }
 
 }  // namespace voxel

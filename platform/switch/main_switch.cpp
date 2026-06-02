@@ -1,9 +1,12 @@
 #include <switch.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 
 #include "app.h"
+#include "audio.h"
+#include "forest_audio.h"
 #include "switch_renderer.h"
 
 namespace {
@@ -116,6 +119,22 @@ int main(int, char**) {
     if ((down & HidNpadButton_Plus) != 0) {
       break;
     }
+    if ((down & HidNpadButton_X) != 0) {
+      voxel::audio_play_mote_chime(0.85f);
+    }
+    if ((down & HidNpadButton_Y) != 0) {
+      voxel::audio_play_owl_appear();
+    }
+    static float debug_hum_volume = 0.0f;
+    static float debug_hum_pitch = 1.0f;
+    if ((down & HidNpadButton_StickL) != 0) {
+      debug_hum_volume = std::max(0.0f, debug_hum_volume - 0.015f);
+      voxel::forest_audio_debug_override_hum(debug_hum_volume, debug_hum_pitch);
+    }
+    if ((down & HidNpadButton_StickR) != 0) {
+      debug_hum_volume = std::min(0.18f, debug_hum_volume + 0.015f);
+      voxel::forest_audio_debug_override_hum(debug_hum_volume, debug_hum_pitch);
+    }
 
     voxel::CameraInput input;
     update_input(input, pad);
@@ -144,6 +163,26 @@ int main(int, char**) {
                   ns_to_ms(stats.static_upload_ns),
                   ns_to_ms(stats.dynamic_upload_ns));
       std::printf("verts %zu tris %zu\n", stats.vertices, stats.triangles);
+      const auto audio = voxel::audio_debug_status();
+      std::printf("audio %s rate %d voices %d hum %.2f pitch %.2f\n",
+                  audio.initialized ? "yes" : "no",
+                  audio.sample_rate,
+                  audio.active_voices,
+                  audio.hum_volume,
+                  audio.hum_pitch);
+      const auto& forest_audio = app_stats.forest_audio;
+      std::printf("forest audio dist %.2f align %.2f signal %.2f hum %.2f pitch %.2f chime_cd %.2f owl %s played %s owl_pos %.2f %.2f %.2f\n",
+                  forest_audio.distance_to_heart,
+                  forest_audio.alignment,
+                  forest_audio.signal,
+                  forest_audio.forest_hum_volume,
+                  forest_audio.forest_hum_pitch,
+                  forest_audio.mote_chime_cooldown,
+                  forest_audio.owl_visible ? "yes" : "no",
+                  forest_audio.owl_appear_sound_played ? "yes" : "no",
+                  forest_audio.owl_position.x,
+                  forest_audio.owl_position.y,
+                  forest_audio.owl_position.z);
     }
 #endif
   }

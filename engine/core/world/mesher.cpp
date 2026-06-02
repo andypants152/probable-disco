@@ -37,6 +37,10 @@ constexpr std::array<Face, 6> kFaces = {{
 constexpr float kMoonClearingX = 42.0f;
 constexpr float kMoonClearingZ = -104.0f;
 constexpr float kMoonClearingRadius = 16.0f;
+constexpr float kOwlLandmarkX = 0.0f;
+constexpr float kOwlLandmarkZ = -7.0f;
+constexpr Vec3 kOwlPerchOffset = {-3.0f, 0.0f, 1.5f};
+constexpr float kOwlPerchHeight = 1.78f;
 
 std::uint32_t hash2(int x, int z, std::uint32_t seed = 0x6d2b79f5u) {
   std::uint32_t h = seed;
@@ -57,6 +61,28 @@ float moon_clearing_influence(float world_x, float world_z) {
   const float dz = world_z - kMoonClearingZ;
   const float distance = std::sqrt(dx * dx + dz * dz);
   return std::max(0.0f, std::min(1.0f, (kMoonClearingRadius - distance) / 6.0f));
+}
+
+float smoothstep(float value) {
+  value = std::max(0.0f, std::min(1.0f, value));
+  return value * value * (3.0f - 2.0f * value);
+}
+
+float lerp(float a, float b, float t) {
+  return a + (b - a) * t;
+}
+
+float sample_terrain_height(const TerrainGenerator& generator, float x, float z) {
+  const int x0 = static_cast<int>(std::floor(x));
+  const int z0 = static_cast<int>(std::floor(z));
+  const float tx = smoothstep(x - static_cast<float>(x0));
+  const float tz = smoothstep(z - static_cast<float>(z0));
+
+  const float h00 = static_cast<float>(generator.terrain_height(x0, z0));
+  const float h10 = static_cast<float>(generator.terrain_height(x0 + 1, z0));
+  const float h01 = static_cast<float>(generator.terrain_height(x0, z0 + 1));
+  const float h11 = static_cast<float>(generator.terrain_height(x0 + 1, z0 + 1));
+  return lerp(lerp(h00, h10, tx), lerp(h01, h11, tx), tz);
 }
 
 std::uint8_t shade_channel(std::uint8_t channel, float shade) {
@@ -252,20 +278,20 @@ void append_mushrooms(Mesh& mesh, const TerrainGenerator& generator, int world_x
   }
 }
 
-void append_owl(Mesh& mesh, const TerrainGenerator& generator, int world_x, int world_z) {
-  const float y = static_cast<float>(generator.terrain_height(world_x, world_z));
-  const float x = static_cast<float>(world_x);
-  const float z = static_cast<float>(world_z);
-  append_box(mesh, {{x - 0.21f, y, z - 0.21f}, {x + 0.21f, y + 1.8f, z + 0.21f}, pack_rgba(138, 93, 60)});
-  append_box(mesh, {{x - 0.75f, y + 1.55f, z - 0.13f}, {x + 0.75f, y + 1.79f, z + 0.13f}, pack_rgba(138, 93, 60)});
-  append_box(mesh, {{x - 0.41f, y + 1.78f, z - 0.31f}, {x + 0.41f, y + 2.80f, z + 0.31f}, pack_rgba(95, 75, 58)});
-  append_box(mesh, {{x - 0.68f, y + 1.82f, z - 0.27f}, {x - 0.42f, y + 2.64f, z + 0.27f}, pack_rgba(63, 56, 54)});
-  append_box(mesh, {{x + 0.42f, y + 1.82f, z - 0.27f}, {x + 0.68f, y + 2.64f, z + 0.27f}, pack_rgba(63, 56, 54)});
-  append_box(mesh, {{x - 0.43f, y + 2.62f, z - 0.29f}, {x + 0.43f, y + 3.24f, z + 0.29f}, pack_rgba(95, 75, 58)});
-  append_box(mesh, {{x - 0.34f, y + 2.76f, z - 0.37f}, {x + 0.34f, y + 3.10f, z - 0.29f}, pack_rgba(216, 206, 178)});
-  append_box(mesh, {{x - 0.07f, y + 2.76f, z - 0.48f}, {x + 0.07f, y + 2.90f, z - 0.36f}, pack_rgba(255, 185, 67)});
-  append_box(mesh, {{x - 0.25f, y + 2.94f, z - 0.43f}, {x - 0.12f, y + 3.07f, z - 0.38f}, pack_rgba(143, 255, 242)});
-  append_box(mesh, {{x + 0.12f, y + 2.94f, z - 0.43f}, {x + 0.25f, y + 3.07f, z - 0.38f}, pack_rgba(143, 255, 242)});
+void append_owl(Mesh& mesh, Vec3 owl_position) {
+  const float ground_y = owl_position.y - kOwlPerchHeight;
+  const float x = owl_position.x;
+  const float z = owl_position.z;
+  append_box(mesh, {{x - 0.21f, ground_y, z - 0.21f}, {x + 0.21f, ground_y + 1.8f, z + 0.21f}, pack_rgba(138, 93, 60)});
+  append_box(mesh, {{x - 0.75f, ground_y + 1.55f, z - 0.13f}, {x + 0.75f, ground_y + 1.79f, z + 0.13f}, pack_rgba(138, 93, 60)});
+  append_box(mesh, {{x - 0.41f, owl_position.y, z - 0.31f}, {x + 0.41f, owl_position.y + 1.02f, z + 0.31f}, pack_rgba(95, 75, 58)});
+  append_box(mesh, {{x - 0.68f, owl_position.y + 0.04f, z - 0.27f}, {x - 0.42f, owl_position.y + 0.86f, z + 0.27f}, pack_rgba(63, 56, 54)});
+  append_box(mesh, {{x + 0.42f, owl_position.y + 0.04f, z - 0.27f}, {x + 0.68f, owl_position.y + 0.86f, z + 0.27f}, pack_rgba(63, 56, 54)});
+  append_box(mesh, {{x - 0.43f, owl_position.y + 0.84f, z - 0.29f}, {x + 0.43f, owl_position.y + 1.46f, z + 0.29f}, pack_rgba(95, 75, 58)});
+  append_box(mesh, {{x - 0.34f, owl_position.y + 0.98f, z - 0.37f}, {x + 0.34f, owl_position.y + 1.32f, z - 0.29f}, pack_rgba(216, 206, 178)});
+  append_box(mesh, {{x - 0.07f, owl_position.y + 0.98f, z - 0.48f}, {x + 0.07f, owl_position.y + 1.12f, z - 0.36f}, pack_rgba(255, 185, 67)});
+  append_box(mesh, {{x - 0.25f, owl_position.y + 1.16f, z - 0.43f}, {x - 0.12f, owl_position.y + 1.29f, z - 0.38f}, pack_rgba(143, 255, 242)});
+  append_box(mesh, {{x + 0.12f, owl_position.y + 1.16f, z - 0.43f}, {x + 0.25f, owl_position.y + 1.29f, z - 0.38f}, pack_rgba(143, 255, 242)});
 }
 
 void append_charm(Mesh& mesh, const TerrainGenerator& generator, int world_x, int world_z) {
@@ -302,8 +328,12 @@ void append_world_dressing(Mesh& mesh, const TerrainGenerator& generator, int mi
     }
   }
 
-  if (min_x <= 0 && 0 < min_x + size_x && min_z <= -7 && -7 < min_z + size_z) {
-    append_owl(mesh, generator, 0, -7);
+  const Vec3 owl_position = owl_perch_position(generator);
+  if (min_x <= static_cast<int>(std::floor(owl_position.x)) &&
+      static_cast<int>(std::floor(owl_position.x)) < min_x + size_x &&
+      min_z <= static_cast<int>(std::floor(owl_position.z)) &&
+      static_cast<int>(std::floor(owl_position.z)) < min_z + size_z) {
+    append_owl(mesh, owl_position);
   }
   if (min_x <= static_cast<int>(kMoonClearingX) && static_cast<int>(kMoonClearingX) < min_x + size_x &&
       min_z <= static_cast<int>(kMoonClearingZ) && static_cast<int>(kMoonClearingZ) < min_z + size_z) {
@@ -370,6 +400,18 @@ Mesh build_world_mesh(const TerrainGenerator& generator, int min_x, int min_z, i
 
   append_world_dressing(mesh, generator, min_x, min_z, size_x, size_z);
   return mesh;
+}
+
+Vec3 heart_position(const TerrainGenerator& generator) {
+  const float y = sample_terrain_height(generator, kMoonClearingX, kMoonClearingZ) + 1.15f;
+  return {kMoonClearingX, y, kMoonClearingZ};
+}
+
+Vec3 owl_perch_position(const TerrainGenerator& generator) {
+  const float x = kOwlLandmarkX + kOwlPerchOffset.x;
+  const float z = kOwlLandmarkZ + kOwlPerchOffset.z;
+  const float y = sample_terrain_height(generator, x, z) + kOwlPerchHeight;
+  return {x, y, z};
 }
 
 }  // namespace voxel

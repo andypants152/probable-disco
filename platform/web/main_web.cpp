@@ -7,6 +7,8 @@
 #include <emscripten/html5.h>
 
 #include "app.h"
+#include "audio.h"
+#include "forest_audio.h"
 #include "web_renderer.h"
 
 namespace {
@@ -20,6 +22,8 @@ struct Host {
   voxel::WebRenderer renderer;
   voxel::CameraInput input;
   double last_time_ms = 0.0;
+  float debug_hum_volume = 0.0f;
+  float debug_hum_pitch = 1.0f;
   bool mouse_down = false;
 };
 
@@ -93,6 +97,9 @@ void resize_canvas(Host& host) {
 EM_BOOL key_callback(int event_type, const EmscriptenKeyboardEvent* event, void* user_data) {
   auto* host = static_cast<Host*>(user_data);
   const bool down = event_type == EMSCRIPTEN_EVENT_KEYDOWN;
+  if (down) {
+    voxel::audio_resume();
+  }
 
   if (std::strcmp(event->code, "KeyW") == 0) {
     host->input.forward = down;
@@ -118,6 +125,36 @@ EM_BOOL key_callback(int event_type, const EmscriptenKeyboardEvent* event, void*
     host->input.down = down;
     return EM_TRUE;
   }
+  if (down && !event->repeat && std::strcmp(event->code, "KeyM") == 0) {
+    voxel::audio_play_mote_chime(0.85f);
+    return EM_TRUE;
+  }
+  if (down && !event->repeat && std::strcmp(event->code, "KeyO") == 0) {
+    voxel::audio_play_owl_appear();
+    return EM_TRUE;
+  }
+  if (down && !event->repeat &&
+      (std::strcmp(event->code, "Minus") == 0 || std::strcmp(event->code, "Digit9") == 0)) {
+    host->debug_hum_volume = std::max(0.0f, host->debug_hum_volume - 0.015f);
+    voxel::forest_audio_debug_override_hum(host->debug_hum_volume, host->debug_hum_pitch);
+    return EM_TRUE;
+  }
+  if (down && !event->repeat &&
+      (std::strcmp(event->code, "Equal") == 0 || std::strcmp(event->code, "Digit0") == 0)) {
+    host->debug_hum_volume = std::min(0.18f, host->debug_hum_volume + 0.015f);
+    voxel::forest_audio_debug_override_hum(host->debug_hum_volume, host->debug_hum_pitch);
+    return EM_TRUE;
+  }
+  if (down && !event->repeat && std::strcmp(event->code, "BracketLeft") == 0) {
+    host->debug_hum_pitch = std::max(0.65f, host->debug_hum_pitch - 0.08f);
+    voxel::forest_audio_debug_override_hum(host->debug_hum_volume, host->debug_hum_pitch);
+    return EM_TRUE;
+  }
+  if (down && !event->repeat && std::strcmp(event->code, "BracketRight") == 0) {
+    host->debug_hum_pitch = std::min(1.60f, host->debug_hum_pitch + 0.08f);
+    voxel::forest_audio_debug_override_hum(host->debug_hum_volume, host->debug_hum_pitch);
+    return EM_TRUE;
+  }
 
   return EM_FALSE;
 }
@@ -126,6 +163,7 @@ EM_BOOL mouse_button_callback(int event_type, const EmscriptenMouseEvent*, void*
   auto* host = static_cast<Host*>(user_data);
   host->mouse_down = event_type == EMSCRIPTEN_EVENT_MOUSEDOWN;
   if (host->mouse_down) {
+    voxel::audio_resume();
     emscripten_request_pointerlock("#canvas", EM_TRUE);
   }
   return EM_TRUE;
