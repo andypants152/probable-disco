@@ -141,3 +141,13 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# C++ / Emscripten / Switch build outputs
+build-core/
+build-web/
+build-switch/
+*.elf
+*.nro
+*.nacp
+*.map
+*.lst

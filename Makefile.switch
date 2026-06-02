@@ -1,0 +1,111 @@
+ifeq ($(strip $(DEVKITPRO)),)
+$(error "Please set DEVKITPRO in your environment. export DEVKITPRO=<path to>/devkitpro")
+endif
+
+TOPDIR ?= $(CURDIR)
+include $(DEVKITPRO)/libnx/switch_rules
+LD := $(CXX)
+
+PROFILE ?= 0
+LTO ?= 0
+DEKO_SMOKE ?= 0
+TARGET ?= probable-disco
+ifeq ($(PROFILE),1)
+  BUILD ?= build-switch-profile
+else
+  BUILD ?= build-switch
+endif
+SOURCES := engine/core engine/core/world engine/core/game platform/switch
+SHADER_SOURCES := platform/switch/shaders
+INCLUDES := engine/core platform/switch
+APP_TITLE := Probable Disco Voxel Forest
+APP_AUTHOR := AndyPants
+APP_VERSION := 0.1.0
+
+ARCH := -march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -fPIE
+OPTFLAGS := -O3 -DNDEBUG -DVOXEL_SWITCH_TIMING
+DEBUGFLAGS :=
+ifeq ($(PROFILE),1)
+  OPTFLAGS := -O2 -g -DVOXEL_SWITCH_TIMING -DVOXEL_SWITCH_PROFILE
+  DEBUGFLAGS := -g
+endif
+ifeq ($(DEKO_SMOKE),1)
+  OPTFLAGS += -DVOXEL_DEKO_SMOKE
+endif
+ifeq ($(LTO),1)
+  OPTFLAGS += -flto
+endif
+CFLAGS = -Wall $(OPTFLAGS) -ffunction-sections -fdata-sections $(ARCH) $(INCLUDE) -D__SWITCH__
+CXXFLAGS = $(CFLAGS) -std=gnu++17 -fno-exceptions -fno-rtti
+ASFLAGS = $(DEBUGFLAGS) $(ARCH)
+LDFLAGS = -specs=$(DEVKITPRO)/libnx/switch.specs $(DEBUGFLAGS) $(ARCH) $(if $(filter 1,$(LTO)),-flto,) -Wl,-Map,$(notdir $*.map)
+LIBS := -ldeko3dd -lnx
+LIBDIRS := $(PORTLIBS) $(LIBNX)
+
+ifneq ($(BUILD),$(notdir $(CURDIR)))
+
+export OUTPUT := $(CURDIR)/$(TARGET)
+export TOPDIR := $(CURDIR)
+export VPATH := $(foreach dir,$(SOURCES),$(CURDIR)/$(dir))
+export DEPSDIR := $(CURDIR)/$(BUILD)
+export INCLUDE := $(foreach dir,$(INCLUDES),-I$(CURDIR)/$(dir)) \
+  $(foreach dir,$(LIBDIRS),-I$(dir)/include) \
+  -I$(CURDIR)/$(BUILD)
+export LIBPATHS := $(foreach dir,$(LIBDIRS),-L$(dir)/lib)
+
+CPPFILES := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.cpp)))
+SFILES := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.s)))
+GLSLFILES := $(foreach dir,$(SHADER_SOURCES),$(notdir $(wildcard $(dir)/*.glsl)))
+OFILES := $(CPPFILES:.cpp=.o) $(SFILES:.s=.o)
+SHADER_BUILD_DIR := $(BUILD)/shaders
+SHADER_BINARIES := $(patsubst %.glsl,$(SHADER_BUILD_DIR)/%.dksh,$(GLSLFILES))
+SHADER_ASM := $(patsubst %.glsl,$(BUILD)/%_dksh.s,$(GLSLFILES))
+OFILES += $(notdir $(SHADER_ASM:.s=.o))
+
+export OFILES
+export APP_TITLE
+export APP_AUTHOR
+export APP_VERSION
+
+.PHONY: all clean $(BUILD)
+
+all: $(BUILD)
+
+$(BUILD): $(SHADER_ASM)
+	@[ -d $@ ] || mkdir -p $@
+	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile.switch
+
+$(SHADER_BUILD_DIR):
+	@mkdir -p $@
+
+$(SHADER_BUILD_DIR)/%_vsh.dksh: $(SHADER_SOURCES)/%_vsh.glsl | $(SHADER_BUILD_DIR)
+	@echo {vert} $(notdir $<)
+	@uam -s vert -o $@ $<
+
+$(SHADER_BUILD_DIR)/%_fsh.dksh: $(SHADER_SOURCES)/%_fsh.glsl | $(SHADER_BUILD_DIR)
+	@echo {frag} $(notdir $<)
+	@uam -s frag -o $@ $<
+
+$(BUILD)/%_dksh.s: $(SHADER_BUILD_DIR)/%.dksh
+	@echo {bin2s} $(notdir $<)
+	@bin2s $< > $@
+
+clean:
+	@echo clean ...
+	@rm -fr $(BUILD) $(TARGET).nro $(TARGET).elf $(TARGET).nacp $(TARGET).map $(TARGET).lst
+
+else
+
+DEPENDS := $(OFILES:.o=.d)
+
+.PHONY: all
+
+all: $(OUTPUT).nro
+
+$(OUTPUT).nro: $(OUTPUT).elf
+
+$(OUTPUT).elf: $(OFILES)
+
+-include $(DEPENDS)
+
+endif
