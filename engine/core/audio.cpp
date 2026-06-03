@@ -50,6 +50,7 @@ struct AudioState {
   bool initialized = false;
   bool sdl_audio_started = false;
   bool sdl_audio_owned = false;
+  bool gameplay_audio_ready = false;
   float hum_target_volume = 0.0f;
   float hum_volume = 0.0f;
   float hum_target_pitch = 1.0f;
@@ -301,6 +302,11 @@ bool audio_init() {
   g_audio.hum_target_volume = 0.0f;
   g_audio.hum_target_pitch = 1.0f;
   g_audio.initialized = true;
+#if defined(__EMSCRIPTEN__)
+  g_audio.gameplay_audio_ready = false;
+#else
+  g_audio.gameplay_audio_ready = true;
+#endif
   SDL_PauseAudioDevice(g_audio.device, 0);
   std::printf("Audio initialized: yes rate=%d channels=%d format=%s\n",
               g_audio.spec.freq,
@@ -339,7 +345,12 @@ void audio_update(float dt) {
 void audio_resume() {
   if (g_audio.initialized && g_audio.device != 0) {
     SDL_PauseAudioDevice(g_audio.device, 0);
+    g_audio.gameplay_audio_ready = true;
   }
+}
+
+bool audio_ready_for_gameplay_sound() {
+  return g_audio.initialized && g_audio.device != 0 && g_audio.gameplay_audio_ready;
 }
 
 void audio_set_forest_hum(float volume, float pitch) {
@@ -374,8 +385,9 @@ void audio_play_owl_appear() {
   }
 
   SDL_LockAudioDevice(g_audio.device);
-  start_voice(VoiceKind::OwlTone, 330.0f, 0.19f, 0.95f, 2.0f, -0.05f, 155.0f);
-  start_voice(VoiceKind::OwlNoise, 0.0f, 0.055f, 0.82f, 2.0f, 0.08f, 0.0f);
+  start_voice(VoiceKind::OwlTone, 360.0f, 0.24f, 1.05f, 2.0f, -0.14f, 150.0f);
+  start_voice(VoiceKind::OwlTone, 265.0f, 0.15f, 1.25f, 2.0f, 0.18f, 70.0f);
+  start_voice(VoiceKind::OwlNoise, 0.0f, 0.075f, 0.92f, 2.0f, 0.05f, 0.0f);
   SDL_UnlockAudioDevice(g_audio.device);
 }
 

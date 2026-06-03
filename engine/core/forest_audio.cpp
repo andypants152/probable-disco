@@ -10,11 +10,11 @@ namespace voxel {
 
 namespace {
 
-constexpr float kMinHumVolume = 0.04f;
+constexpr float kMinHumVolume = 0.075f;
 constexpr float kMaxHumVolume = 0.18f;
 constexpr float kBaseHumPitch = 1.0f;
 constexpr float kCloseHumPitch = 1.15f;
-constexpr float kHeartPitchRange = 120.0f;
+constexpr float kObjectivePitchRange = 120.0f;
 constexpr float kHumSmoothingSpeed = 2.2f;
 constexpr float kChimeAlignmentThreshold = 0.65f;
 constexpr float kStrongChimeAlignment = 0.85f;
@@ -24,8 +24,8 @@ constexpr float kFootstepMaxSpeed = 8.5f;
 struct ForestAudioState {
   float hum_volume = 0.0f;
   float hum_pitch = 1.0f;
-  float distance_to_heart = 0.0f;
-  float previous_distance_to_heart = 0.0f;
+  float distance_to_objective = 0.0f;
+  float previous_distance_to_objective = 0.0f;
   float alignment = 0.0f;
   float signal = 0.0f;
   float mote_chime_cooldown = 1.6f;
@@ -83,13 +83,13 @@ void update_hum(float dt,
                 const ForestAudioPlayerState& player,
                 const ForestAudioWorldState& world) {
   ForestAudioState& state = g_forest_audio;
-  const Vec3 direction_to_heart = horizontal_direction(player.position, world.heart_position);
+  const Vec3 direction_to_objective = horizontal_direction(player.position, world.objective_position);
   const Vec3 player_forward = normalize({player.forward.x, 0.0f, player.forward.z});
 
-  state.distance_to_heart = horizontal_distance(player.position, world.heart_position);
-  state.alignment = clamp_float(dot(player_forward, direction_to_heart), 0.0f, 1.0f);
+  state.distance_to_objective = horizontal_distance(player.position, world.objective_position);
+  state.alignment = clamp_float(dot(player_forward, direction_to_objective), 0.0f, 1.0f);
 
-  const float close = clamp_float(1.0f - state.distance_to_heart / kHeartPitchRange, 0.0f, 1.0f);
+  const float close = clamp_float(1.0f - state.distance_to_objective / kObjectivePitchRange, 0.0f, 1.0f);
   state.signal = state.alignment * (0.72f + close * 0.28f);
   const float target_volume = lerp(kMinHumVolume, kMaxHumVolume, state.signal);
   const float target_pitch = lerp(kBaseHumPitch, kCloseHumPitch, close);
@@ -107,6 +107,10 @@ void update_hum(float dt,
 }
 
 void update_mote_chimes(float dt) {
+  if (!audio_ready_for_gameplay_sound()) {
+    return;
+  }
+
   ForestAudioState& state = g_forest_audio;
   state.mote_chime_cooldown = std::max(0.0f, state.mote_chime_cooldown - dt);
   if (state.alignment < kChimeAlignmentThreshold) {
@@ -116,13 +120,13 @@ void update_mote_chimes(float dt) {
     return;
   }
 
-  const bool moving_toward_heart = state.has_previous_distance &&
-      state.distance_to_heart < state.previous_distance_to_heart - 0.015f;
+  const bool moving_toward_objective = state.has_previous_distance &&
+      state.distance_to_objective < state.previous_distance_to_objective - 0.015f;
   const float strong_alignment = clamp_float((state.alignment - kStrongChimeAlignment) /
                                              (1.0f - kStrongChimeAlignment),
                                              0.0f,
                                              1.0f);
-  const float chance = 0.34f + strong_alignment * 0.24f + (moving_toward_heart ? 0.18f : 0.0f);
+  const float chance = 0.34f + strong_alignment * 0.24f + (moving_toward_objective ? 0.18f : 0.0f);
   if (next_random_unit() < chance) {
     const float intensity = clamp_float(0.22f + state.signal * 0.30f +
                                             strong_alignment * 0.14f +
@@ -133,7 +137,7 @@ void update_mote_chimes(float dt) {
   }
 
   const float cooldown_min = state.alignment >= kStrongChimeAlignment ? 1.45f : 1.8f;
-  const float cooldown_max = moving_toward_heart ? 3.0f : 4.0f;
+  const float cooldown_max = moving_toward_objective ? 3.0f : 4.0f;
   state.mote_chime_cooldown = lerp(cooldown_min, cooldown_max, next_random_unit());
 }
 
@@ -145,6 +149,9 @@ void update_owl(const ForestAudioWorldState& world) {
     state.owl_appear_sound_played = false;
     return;
   }
+  if (!audio_ready_for_gameplay_sound()) {
+    return;
+  }
   if (!state.owl_appear_sound_played) {
     audio_play_owl_appear();
     state.owl_appear_sound_played = true;
@@ -152,6 +159,10 @@ void update_owl(const ForestAudioWorldState& world) {
 }
 
 void update_footsteps(float dt, const ForestAudioPlayerState& player) {
+  if (!audio_ready_for_gameplay_sound()) {
+    return;
+  }
+
   ForestAudioState& state = g_forest_audio;
   state.footstep_cooldown = std::max(0.0f, state.footstep_cooldown - dt);
   if (!player.on_ground || player.movement_speed < kFootstepMinSpeed || state.footstep_cooldown > 0.0f) {
@@ -170,6 +181,7 @@ void update_footsteps(float dt, const ForestAudioPlayerState& player) {
 
 void forest_audio_init() {
   g_forest_audio = {};
+  g_forest_audio.hum_volume = kMinHumVolume;
   g_forest_audio.hum_pitch = 1.0f;
   g_forest_audio.debug_hum_pitch = 1.0f;
   g_forest_audio.mote_chime_cooldown = 1.6f;
@@ -189,7 +201,7 @@ void forest_audio_update(float dt,
   update_owl(*world);
   update_footsteps(dt, *player);
 
-  g_forest_audio.previous_distance_to_heart = g_forest_audio.distance_to_heart;
+  g_forest_audio.previous_distance_to_objective = g_forest_audio.distance_to_objective;
   g_forest_audio.has_previous_distance = true;
 }
 
@@ -206,7 +218,7 @@ void forest_audio_debug_override_hum(float volume, float pitch) {
 
 ForestAudioDebugStatus forest_audio_debug_status() {
   ForestAudioDebugStatus status;
-  status.distance_to_heart = g_forest_audio.distance_to_heart;
+  status.distance_to_objective = g_forest_audio.distance_to_objective;
   status.alignment = g_forest_audio.alignment;
   status.forest_hum_volume = g_forest_audio.hum_volume;
   status.forest_hum_pitch = g_forest_audio.hum_pitch;

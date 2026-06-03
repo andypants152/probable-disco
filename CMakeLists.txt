@@ -10,6 +10,7 @@ add_library(voxel_core STATIC
   engine/core/app.cpp
   engine/core/audio.cpp
   engine/core/forest_audio.cpp
+  engine/core/subtitles.cpp
   engine/core/world/chunk.cpp
   engine/core/world/generator.cpp
   engine/core/world/mesher.cpp
@@ -25,7 +26,7 @@ target_include_directories(voxel_core
 target_compile_features(voxel_core PUBLIC cxx_std_17)
 
 if(EMSCRIPTEN)
-  target_compile_options(voxel_core PUBLIC "SHELL:-s USE_SDL=2")
+  target_compile_options(voxel_core PUBLIC "SHELL:-s USE_SDL=2" "SHELL:-s USE_SDL_TTF=2")
 
   add_executable(voxel_forest_web
     platform/web/main_web.cpp
@@ -47,7 +48,9 @@ if(EMSCRIPTEN)
       "SHELL:-s MAX_WEBGL_VERSION=2"
       "SHELL:-s FULL_ES3=1"
       "SHELL:-s USE_SDL=2"
+      "SHELL:-s USE_SDL_TTF=2"
       "SHELL:-s ALLOW_MEMORY_GROWTH=1"
+      "SHELL:--preload-file ${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts/subtitle.ttf@assets/fonts/subtitle.ttf"
       "SHELL:--shell-file ${CMAKE_CURRENT_SOURCE_DIR}/platform/web/shell.html"
   )
 

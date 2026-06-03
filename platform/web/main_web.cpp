@@ -69,6 +69,7 @@ EM_JS(int, poll_web_gamepad, (float* axes, int* buttons), {
     HEAP32[(buttons >> 2) + 1] = pressed(13) ? 1 : 0;
     HEAP32[(buttons >> 2) + 2] = pressed(14) ? 1 : 0;
     HEAP32[(buttons >> 2) + 3] = pressed(15) ? 1 : 0;
+    HEAP32[(buttons >> 2) + 4] = (pressed(0) || pressed(1)) ? 1 : 0;
     return 1;
   }
 
@@ -119,6 +120,7 @@ EM_BOOL key_callback(int event_type, const EmscriptenKeyboardEvent* event, void*
   }
   if (std::strcmp(event->code, "Space") == 0) {
     host->input.up = down;
+    host->input.interact = down;
     return EM_TRUE;
   }
   if (std::strcmp(event->code, "ShiftLeft") == 0 || std::strcmp(event->code, "ShiftRight") == 0) {
@@ -180,7 +182,7 @@ EM_BOOL mouse_move_callback(int, const EmscriptenMouseEvent* event, void* user_d
 
 void apply_gamepad_input(voxel::CameraInput& input) {
   float axes[4] = {};
-  int buttons[4] = {};
+  int buttons[5] = {};
   if (poll_web_gamepad(axes, buttons) == 0) {
     return;
   }
@@ -194,6 +196,7 @@ void apply_gamepad_input(voxel::CameraInput& input) {
   input.back = input.back || left_y > 0.0f || buttons[1] != 0;
   input.left = input.left || left_x < 0.0f || buttons[2] != 0;
   input.right = input.right || left_x > 0.0f || buttons[3] != 0;
+  input.interact = input.interact || buttons[4] != 0;
 
   input.look_delta_x += right_x * kGamepadLookPixelsPerSecond * input.delta_time;
   input.look_delta_y += right_y * kGamepadLookPixelsPerSecond * input.delta_time;

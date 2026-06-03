@@ -17,6 +17,7 @@ layout (location = 0) out vec4 outColor;
 layout (location = 1) out float outFog;
 layout (location = 2) out vec3 outNormal;
 layout (location = 3) out vec3 outMicroPosition;
+layout (location = 4) out vec3 outWorldPosition;
 
 void main() {
   gl_Position = viewProjection * vec4(inPosition, 1.0);
@@ -24,6 +25,7 @@ void main() {
   outColor = inColor;
   outNormal = inNormal;
   outMicroPosition = inMicroPosition;
+  outWorldPosition = inPosition;
 
   float viewDepth = dot(inPosition - cameraPosition.xyz, cameraForward.xyz);
   float fogDensity = fogParams.x;

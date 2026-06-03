@@ -12,13 +12,13 @@ struct ForestAudioPlayerState {
 };
 
 struct ForestAudioWorldState {
-  Vec3 heart_position = {};
+  Vec3 objective_position = {};
   Vec3 owl_position = {};
   bool owl_visible = false;
 };
 
 struct ForestAudioDebugStatus {
-  float distance_to_heart = 0.0f;
+  float distance_to_objective = 0.0f;
   float alignment = 0.0f;
   float forest_hum_volume = 0.0f;
   float forest_hum_pitch = 1.0f;

@@ -21,6 +21,7 @@ INCLUDES := engine/core platform/switch
 APP_TITLE := Probable Disco Voxel Forest
 APP_AUTHOR := AndyPants
 APP_VERSION := 0.1.0
+ROMFS_DIR := $(TOPDIR)/build-romfs
 
 ARCH := -march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -fPIE
 OPTFLAGS := -O3 -DNDEBUG -DVOXEL_SWITCH_TIMING
@@ -39,8 +40,9 @@ CFLAGS = -Wall $(OPTFLAGS) -ffunction-sections -fdata-sections $(ARCH) $(INCLUDE
 CXXFLAGS = $(CFLAGS) -std=gnu++17 -fno-exceptions -fno-rtti
 ASFLAGS = $(DEBUGFLAGS) $(ARCH)
 LDFLAGS = -specs=$(DEVKITPRO)/libnx/switch.specs $(DEBUGFLAGS) $(ARCH) $(if $(filter 1,$(LTO)),-flto,) -Wl,-Map,$(notdir $*.map)
-LIBS := -lSDL2 -lEGL -lglapi -ldrm_nouveau -ldeko3dd -lnx -lpthread
+LIBS := -lSDL2_ttf -lSDL2 -lEGL -lglapi -ldrm_nouveau -ldeko3dd -lfreetype -lharfbuzz -lpng16 -lbz2 -lz -lnx -lpthread -lm
 LIBDIRS := $(PORTLIBS) $(LIBNX)
+NROFLAGS += --romfsdir=$(ROMFS_DIR)
 
 ifneq ($(BUILD),$(notdir $(CURDIR)))
 
@@ -67,13 +69,17 @@ export APP_TITLE
 export APP_AUTHOR
 export APP_VERSION
 
-.PHONY: all clean $(BUILD)
+.PHONY: all clean $(BUILD) prepare-romfs
 
 all: $(BUILD)
 
-$(BUILD): $(SHADER_ASM)
+$(BUILD): $(SHADER_ASM) prepare-romfs
 	@[ -d $@ ] || mkdir -p $@
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile.switch
+
+prepare-romfs:
+	@mkdir -p $(ROMFS_DIR)/assets/fonts
+	@cp $(CURDIR)/assets/fonts/subtitle.ttf $(ROMFS_DIR)/assets/fonts/subtitle.ttf
 
 $(SHADER_BUILD_DIR):
 	@mkdir -p $@

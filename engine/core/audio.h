@@ -14,6 +14,7 @@ bool audio_init();
 void audio_shutdown();
 void audio_update(float dt);
 void audio_resume();
+bool audio_ready_for_gameplay_sound();
 
 void audio_set_forest_hum(float volume, float pitch);
 void audio_play_mote_chime(float intensity);

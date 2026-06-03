@@ -146,6 +146,7 @@ vite.config.ts.timestamp-*
 build-core/
 build-web/
 build-switch/
+build-romfs/
 *.elf
 *.nro
 *.nacp

@@ -102,6 +102,10 @@ int main(int, char**) {
 #endif
 
   padConfigureInput(1, HidNpadStyleSet_NpadStandard);
+  const bool romfs_ready = R_SUCCEEDED(romfsInit());
+  if (!romfs_ready) {
+    std::printf("romfs init failed; subtitle font may be unavailable.\n");
+  }
 
   PadState pad;
   padInitializeDefault(&pad);
@@ -110,6 +114,12 @@ int main(int, char**) {
   voxel::App app;
   if (!app.init(renderer)) {
     svcSleepThread(2'000'000'000);
+    if (romfs_ready) {
+      romfsExit();
+    }
+#if defined(VOXEL_SWITCH_TIMING)
+    shutdown_timing_output();
+#endif
     return 1;
   }
 
@@ -138,6 +148,7 @@ int main(int, char**) {
 
     voxel::CameraInput input;
     update_input(input, pad);
+    input.interact = (down & HidNpadButton_A) != 0;
     app.frame(renderer, input);
 #if defined(VOXEL_SWITCH_TIMING)
     static int profile_frame = 0;
@@ -171,8 +182,19 @@ int main(int, char**) {
                   audio.hum_volume,
                   audio.hum_pitch);
       const auto& forest_audio = app_stats.forest_audio;
+      std::printf("loop carried %d lantern %d deposit %d/%d fireflies %d lights %d objective %.2f glow %.2f lantern %.2f radius %.2f\n",
+                  app_stats.carried_fireflies,
+                  app_stats.active_lantern_index,
+                  app_stats.deposited_fireflies,
+                  app_stats.required_fireflies,
+                  app_stats.active_fireflies,
+                  app_stats.active_gameplay_lights,
+                  app_stats.distance_to_objective,
+                  app_stats.firefly_glow_intensity,
+                  app_stats.lantern_light_intensity,
+                  app_stats.lantern_light_radius);
       std::printf("forest audio dist %.2f align %.2f signal %.2f hum %.2f pitch %.2f chime_cd %.2f owl %s played %s owl_pos %.2f %.2f %.2f\n",
-                  forest_audio.distance_to_heart,
+                  forest_audio.distance_to_objective,
                   forest_audio.alignment,
                   forest_audio.signal,
                   forest_audio.forest_hum_volume,
@@ -191,5 +213,8 @@ int main(int, char**) {
 #if defined(VOXEL_SWITCH_TIMING)
   shutdown_timing_output();
 #endif
+  if (romfs_ready) {
+    romfsExit();
+  }
   return 0;
 }
