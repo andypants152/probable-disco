@@ -13,20 +13,20 @@ add_library(voxel_core STATIC
   engine/core/audio.cpp
   engine/core/forest_audio.cpp
   engine/core/subtitles.cpp
-  src/render/bitmap_font.cpp
-  src/render/gles_renderer.cpp
-  src/render/quad_batch.cpp
-  engine/core/world/chunk.cpp
-  engine/core/world/generator.cpp
-  engine/core/world/mesher.cpp
-  engine/core/game/camera.cpp
-  engine/core/game/fox.cpp
+  engine/render/bitmap_font.cpp
+  engine/render/gles_renderer.cpp
+  engine/render/quad_batch.cpp
+  engine/world/chunk.cpp
+  engine/world/generator.cpp
+  engine/world/mesher.cpp
+  engine/game/camera.cpp
+  engine/game/fox.cpp
 )
 
 target_include_directories(voxel_core
   PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/core
-    ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 
 target_compile_features(voxel_core PUBLIC cxx_std_17)

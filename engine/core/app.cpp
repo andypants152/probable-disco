@@ -19,6 +19,7 @@ namespace {
 
 constexpr int kWorldRenderRadiusChunks = 2;
 constexpr float kFoxMoveSpeed = 8.5f;
+constexpr float kNormalizedLookPixelsPerSecond = 720.0f;
 constexpr float kCameraDistance = 13.0f;
 constexpr float kCameraTargetHeight = 1.35f;
 constexpr float kFoxHalfWidth = 0.82f;
@@ -110,6 +111,10 @@ float smoothstep(float value) {
 
 float lerp(float a, float b, float t) {
   return a + (b - a) * t;
+}
+
+float clamped_axis(float value) {
+  return std::max(-1.0f, std::min(1.0f, value));
 }
 
 float interpolated_terrain_height(const TerrainGenerator& generator, float x, float z) {
@@ -782,26 +787,24 @@ bool App::update_fox(const CameraInput& input) {
   const Vec3 camera_forward = {std::cos(camera_.yaw), 0.0f, std::sin(camera_.yaw)};
   const Vec3 camera_right = {-std::sin(camera_.yaw), 0.0f, std::cos(camera_.yaw)};
 
-  Vec3 move;
-  if (input.forward) {
-    move += camera_forward;
-  }
-  if (input.back) {
-    move -= camera_forward;
-  }
-  if (input.right) {
-    move += camera_right;
-  }
-  if (input.left) {
-    move -= camera_right;
-  }
+  float move_x = clamped_axis(input.move_x);
+  float move_y = clamped_axis(input.move_y);
+  move_y += input.forward ? -1.0f : 0.0f;
+  move_y += input.back ? 1.0f : 0.0f;
+  move_x += input.left ? -1.0f : 0.0f;
+  move_x += input.right ? 1.0f : 0.0f;
+  move_x = clamped_axis(move_x);
+  move_y = clamped_axis(move_y);
+
+  Vec3 move = camera_right * move_x - camera_forward * move_y;
+  const float move_scale = std::min(1.0f, std::sqrt(move_x * move_x + move_y * move_y));
 
   bool horizontal_moved = false;
-  if (length(move) > 0.00001f) {
+  if (move_scale > 0.00001f && length(move) > 0.00001f) {
     move = normalize(move);
-    fox_position_ += move * (kFoxMoveSpeed * input.delta_time);
+    fox_position_ += move * (kFoxMoveSpeed * move_scale * input.delta_time);
     fox_heading_ = std::atan2(move.x, move.z);
-    fox_movement_speed_ = kFoxMoveSpeed;
+    fox_movement_speed_ = kFoxMoveSpeed * move_scale;
     horizontal_moved = true;
   }
 
@@ -832,7 +835,7 @@ bool App::update_owl(const CameraInput& input) {
     if (near_owl && !subtitles_visible()) {
       subtitles_show("Press A to talk", 0.45f);
     }
-    if (input.interact && audio_ready_for_gameplay_sound() &&
+    if ((input.interact || input.action_pressed) && audio_ready_for_gameplay_sound() &&
         near_owl) {
       owl_state_ = OwlState::Talking;
       owl_prompt_visible_ = false;
@@ -873,8 +876,12 @@ bool App::update_owl(const CameraInput& input) {
 }
 
 void App::update_camera(const CameraInput& input) {
-  camera_.yaw += input.look_delta_x * camera_.look_sensitivity;
-  camera_.pitch -= input.look_delta_y * camera_.look_sensitivity;
+  const float look_delta_x = input.look_delta_x +
+      clamped_axis(input.look_x) * kNormalizedLookPixelsPerSecond * input.delta_time;
+  const float look_delta_y = input.look_delta_y +
+      clamped_axis(input.look_y) * kNormalizedLookPixelsPerSecond * input.delta_time;
+  camera_.yaw += look_delta_x * camera_.look_sensitivity;
+  camera_.pitch -= look_delta_y * camera_.look_sensitivity;
   camera_.pitch = std::max(-1.20f, std::min(-0.12f, camera_.pitch));
 
   const Vec3 target = fox_position_ + Vec3{0.0f, kCameraTargetHeight, 0.0f};

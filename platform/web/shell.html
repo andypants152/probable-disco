@@ -2,7 +2,10 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
+    />
     <title>Probable Disco Voxel Forest</title>
     <style>
       html,
@@ -13,6 +16,9 @@
         overflow: hidden;
         background: #1d2b27;
         font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        overscroll-behavior: none;
+        touch-action: none;
+        user-select: none;
       }
 
       #canvas {
@@ -20,6 +26,7 @@
         width: 100vw;
         height: 100vh;
         outline: none;
+        touch-action: none;
       }
 
       #hud {
@@ -32,6 +39,95 @@
         line-height: 1.35;
         pointer-events: none;
       }
+
+      #touch-controls {
+        --safe-top: env(safe-area-inset-top, 0px);
+        --safe-right: env(safe-area-inset-right, 0px);
+        --safe-bottom: env(safe-area-inset-bottom, 0px);
+        --safe-left: env(safe-area-inset-left, 0px);
+        display: none;
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        touch-action: none;
+      }
+
+      body.touch-enabled #touch-controls {
+        display: block;
+      }
+
+      .touch-stick,
+      .touch-look {
+        position: absolute;
+        width: 128px;
+        height: 128px;
+        border-radius: 50%;
+        border: 2px solid rgba(255, 255, 255, 0.35);
+        background: rgba(12, 25, 28, 0.34);
+        box-shadow: inset 0 0 18px rgba(255, 255, 255, 0.08);
+        pointer-events: auto;
+        touch-action: none;
+      }
+
+      .touch-stick {
+        left: calc(var(--safe-left) + 24px);
+        bottom: calc(var(--safe-bottom) + 28px);
+      }
+
+      .touch-look {
+        right: calc(var(--safe-right) + 24px);
+        bottom: calc(var(--safe-bottom) + 28px);
+      }
+
+      .touch-thumb {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 58px;
+        height: 58px;
+        border-radius: 50%;
+        border: 2px solid rgba(255, 255, 255, 0.45);
+        background: rgba(245, 255, 252, 0.28);
+        transform: translate(-50%, -50%);
+        pointer-events: none;
+      }
+
+      .touch-button {
+        position: absolute;
+        right: calc(var(--safe-right) + 44px);
+        bottom: calc(var(--safe-bottom) + 180px);
+        width: 74px;
+        height: 74px;
+        border-radius: 50%;
+        border: 2px solid rgba(255, 255, 255, 0.4);
+        background: rgba(245, 255, 252, 0.24);
+        color: #ffffff;
+        font-size: 26px;
+        font-weight: 700;
+        line-height: 70px;
+        text-align: center;
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+        pointer-events: auto;
+        touch-action: none;
+      }
+
+      .touch-button.is-down {
+        background: rgba(255, 255, 255, 0.36);
+      }
+
+      @media (orientation: landscape) and (max-height: 520px) {
+        .touch-stick,
+        .touch-look {
+          width: 112px;
+          height: 112px;
+          bottom: calc(var(--safe-bottom) + 18px);
+        }
+
+        .touch-button {
+          right: calc(var(--safe-right) + 38px);
+          bottom: calc(var(--safe-bottom) + 144px);
+        }
+      }
     </style>
   </head>
   <body>
@@ -40,6 +136,212 @@
       <strong>Voxel Forest</strong><br />
       WASD or left stick move, mouse drag or right stick orbit
     </div>
+    <div id="touch-controls" aria-hidden="true">
+      <div id="touch-left-stick" class="touch-stick">
+        <div id="touch-left-thumb" class="touch-thumb"></div>
+      </div>
+      <div id="touch-look-area" class="touch-look">
+        <div id="touch-look-thumb" class="touch-thumb"></div>
+      </div>
+      <div id="touch-action" class="touch-button">A</div>
+    </div>
     {{{ SCRIPT }}}
+    <script>
+      (() => {
+        const root = document.body;
+        const controls = document.getElementById("touch-controls");
+        const leftStick = document.getElementById("touch-left-stick");
+        const leftThumb = document.getElementById("touch-left-thumb");
+        const lookArea = document.getElementById("touch-look-area");
+        const lookThumb = document.getElementById("touch-look-thumb");
+        const actionButton = document.getElementById("touch-action");
+        const radius = 52;
+        const lookSensitivity = 1.35;
+        const active = {
+          leftPointerId: null,
+          lookPointerId: null,
+          actionPointerId: null,
+          lookLastX: 0,
+          lookLastY: 0,
+        };
+
+        function bridge(name, ...args) {
+          const module = window.Module || (typeof Module !== "undefined" ? Module : null);
+          const fn = module && module["_" + name];
+          if (typeof fn === "function") {
+            fn(...args);
+          }
+        }
+
+        function enableTouchControls() {
+          root.classList.add("touch-enabled");
+        }
+
+        function hasCoarsePointer() {
+          return (
+            window.matchMedia("(pointer: coarse)").matches ||
+            window.matchMedia("(hover: none)").matches ||
+            navigator.maxTouchPoints > 0
+          );
+        }
+
+        function clamp(value, min, max) {
+          return Math.max(min, Math.min(max, value));
+        }
+
+        function setThumb(element, x, y) {
+          element.style.transform = `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))`;
+        }
+
+        function pointerOffset(event, element) {
+          const rect = element.getBoundingClientRect();
+          return {
+            x: event.clientX - (rect.left + rect.width * 0.5),
+            y: event.clientY - (rect.top + rect.height * 0.5),
+          };
+        }
+
+        function updateLeftStick(event) {
+          const offset = pointerOffset(event, leftStick);
+          const distance = Math.hypot(offset.x, offset.y);
+          const scale = distance > radius ? radius / distance : 1;
+          const x = offset.x * scale;
+          const y = offset.y * scale;
+          setThumb(leftThumb, x, y);
+          bridge("game_set_touch_move", clamp(x / radius, -1, 1), clamp(y / radius, -1, 1));
+        }
+
+        function resetLeftStick() {
+          active.leftPointerId = null;
+          setThumb(leftThumb, 0, 0);
+          bridge("game_set_touch_move", 0, 0);
+        }
+
+        function updateLook(event) {
+          const dx = event.clientX - active.lookLastX;
+          const dy = event.clientY - active.lookLastY;
+          active.lookLastX = event.clientX;
+          active.lookLastY = event.clientY;
+          const x = clamp((dx / radius) * lookSensitivity, -1, 1);
+          const y = clamp((dy / radius) * lookSensitivity, -1, 1);
+          setThumb(lookThumb, x * radius * 0.42, y * radius * 0.42);
+          bridge("game_set_touch_look", x, y);
+        }
+
+        function resetLook() {
+          active.lookPointerId = null;
+          setThumb(lookThumb, 0, 0);
+          bridge("game_set_touch_look", 0, 0);
+        }
+
+        leftStick.addEventListener("pointerdown", (event) => {
+          if (event.pointerType === "touch") {
+            enableTouchControls();
+          }
+          if (active.leftPointerId !== null) {
+            return;
+          }
+          event.preventDefault();
+          active.leftPointerId = event.pointerId;
+          leftStick.setPointerCapture(event.pointerId);
+          updateLeftStick(event);
+        });
+
+        leftStick.addEventListener("pointermove", (event) => {
+          if (event.pointerId !== active.leftPointerId) {
+            return;
+          }
+          event.preventDefault();
+          updateLeftStick(event);
+        });
+
+        lookArea.addEventListener("pointerdown", (event) => {
+          if (event.pointerType === "touch") {
+            enableTouchControls();
+          }
+          if (active.lookPointerId !== null) {
+            return;
+          }
+          event.preventDefault();
+          active.lookPointerId = event.pointerId;
+          active.lookLastX = event.clientX;
+          active.lookLastY = event.clientY;
+          lookArea.setPointerCapture(event.pointerId);
+        });
+
+        lookArea.addEventListener("pointermove", (event) => {
+          if (event.pointerId !== active.lookPointerId) {
+            return;
+          }
+          event.preventDefault();
+          updateLook(event);
+        });
+
+        actionButton.addEventListener("pointerdown", (event) => {
+          if (event.pointerType === "touch") {
+            enableTouchControls();
+          }
+          if (active.actionPointerId !== null) {
+            return;
+          }
+          event.preventDefault();
+          active.actionPointerId = event.pointerId;
+          actionButton.setPointerCapture(event.pointerId);
+          actionButton.classList.add("is-down");
+          bridge("game_set_touch_button", 0, 1);
+        });
+
+        function releaseAction(pointerId) {
+          if (pointerId !== active.actionPointerId) {
+            return;
+          }
+          active.actionPointerId = null;
+          actionButton.classList.remove("is-down");
+          bridge("game_set_touch_button", 0, 0);
+        }
+
+        function releasePointer(event) {
+          if (event.pointerId === active.leftPointerId) {
+            resetLeftStick();
+          }
+          if (event.pointerId === active.lookPointerId) {
+            resetLook();
+          }
+          releaseAction(event.pointerId);
+        }
+
+        ["pointerup", "pointercancel"].forEach((name) => {
+          leftStick.addEventListener(name, releasePointer);
+          lookArea.addEventListener(name, releasePointer);
+          actionButton.addEventListener(name, releasePointer);
+        });
+
+        function clearTouchInput() {
+          resetLeftStick();
+          resetLook();
+          active.actionPointerId = null;
+          actionButton.classList.remove("is-down");
+          bridge("game_clear_touch_input");
+        }
+
+        window.addEventListener("pointerdown", (event) => {
+          if (event.pointerType === "touch") {
+            enableTouchControls();
+          }
+        });
+        window.addEventListener("blur", clearTouchInput);
+        document.addEventListener("visibilitychange", () => {
+          if (document.hidden) {
+            clearTouchInput();
+          }
+        });
+
+        controls.addEventListener("contextmenu", (event) => event.preventDefault());
+
+        if (hasCoarsePointer()) {
+          enableTouchControls();
+        }
+      })();
+    </script>
   </body>
 </html>

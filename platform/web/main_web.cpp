@@ -14,13 +14,22 @@ namespace {
 
 constexpr float kGamepadMoveDeadZone = 0.25f;
 constexpr float kGamepadLookDeadZone = 0.12f;
-constexpr float kGamepadLookPixelsPerSecond = 720.0f;
 
 struct Host {
   voxel::App app;
   voxel::WebRenderer renderer;
   voxel::CameraInput input;
   double last_time_ms = 0.0;
+  float touch_move_x = 0.0f;
+  float touch_move_y = 0.0f;
+  float touch_look_x = 0.0f;
+  float touch_look_y = 0.0f;
+  bool touch_action_pressed = false;
+  bool touch_action_held = false;
+  bool touch_pause_pressed = false;
+  bool touch_pause_held = false;
+  bool gamepad_action_held = false;
+  bool gamepad_pause_held = false;
   bool mouse_down = false;
 };
 
@@ -67,11 +76,20 @@ EM_JS(int, poll_web_gamepad, (float* axes, int* buttons), {
     HEAP32[(buttons >> 2) + 2] = pressed(14) ? 1 : 0;
     HEAP32[(buttons >> 2) + 3] = pressed(15) ? 1 : 0;
     HEAP32[(buttons >> 2) + 4] = (pressed(0) || pressed(1)) ? 1 : 0;
+    HEAP32[(buttons >> 2) + 5] = (pressed(8) || pressed(9)) ? 1 : 0;
     return 1;
   }
 
   return 0;
 });
+
+float clamp_axis(float value) {
+  return std::max(-1.0f, std::min(1.0f, value));
+}
+
+float dominant_axis(float current, float candidate) {
+  return std::abs(candidate) > std::abs(current) ? candidate : current;
+}
 
 void resize_canvas(Host& host) {
   double css_width = 0.0;
@@ -99,29 +117,42 @@ EM_BOOL key_callback(int event_type, const EmscriptenKeyboardEvent* event, void*
     voxel::audio_resume();
   }
 
-  if (std::strcmp(event->code, "KeyW") == 0) {
+  if (std::strcmp(event->code, "KeyW") == 0 || std::strcmp(event->code, "ArrowUp") == 0) {
     host->input.forward = down;
     return EM_TRUE;
   }
-  if (std::strcmp(event->code, "KeyS") == 0) {
+  if (std::strcmp(event->code, "KeyS") == 0 || std::strcmp(event->code, "ArrowDown") == 0) {
     host->input.back = down;
     return EM_TRUE;
   }
-  if (std::strcmp(event->code, "KeyA") == 0) {
+  if (std::strcmp(event->code, "KeyA") == 0 || std::strcmp(event->code, "ArrowLeft") == 0) {
     host->input.left = down;
     return EM_TRUE;
   }
-  if (std::strcmp(event->code, "KeyD") == 0) {
+  if (std::strcmp(event->code, "KeyD") == 0 || std::strcmp(event->code, "ArrowRight") == 0) {
     host->input.right = down;
     return EM_TRUE;
   }
   if (std::strcmp(event->code, "Space") == 0) {
     host->input.up = down;
     host->input.interact = down;
+    host->input.action_held = down;
+    host->input.action_pressed = down && event->repeat == 0;
+    return EM_TRUE;
+  }
+  if (std::strcmp(event->code, "Enter") == 0 || std::strcmp(event->code, "KeyE") == 0) {
+    host->input.interact = down;
+    host->input.action_held = down;
+    host->input.action_pressed = down && event->repeat == 0;
     return EM_TRUE;
   }
   if (std::strcmp(event->code, "ShiftLeft") == 0 || std::strcmp(event->code, "ShiftRight") == 0) {
     host->input.down = down;
+    return EM_TRUE;
+  }
+  if (std::strcmp(event->code, "Escape") == 0) {
+    host->input.pause_held = down;
+    host->input.pause_pressed = down && event->repeat == 0;
     return EM_TRUE;
   }
   return EM_FALSE;
@@ -146,10 +177,12 @@ EM_BOOL mouse_move_callback(int, const EmscriptenMouseEvent* event, void* user_d
   return EM_TRUE;
 }
 
-void apply_gamepad_input(voxel::CameraInput& input) {
+void apply_gamepad_input(Host& host, voxel::CameraInput& input) {
   float axes[4] = {};
-  int buttons[5] = {};
+  int buttons[6] = {};
   if (poll_web_gamepad(axes, buttons) == 0) {
+    host.gamepad_action_held = false;
+    host.gamepad_pause_held = false;
     return;
   }
 
@@ -158,14 +191,36 @@ void apply_gamepad_input(voxel::CameraInput& input) {
   const float right_x = std::abs(axes[2]) >= kGamepadLookDeadZone ? axes[2] : 0.0f;
   const float right_y = std::abs(axes[3]) >= kGamepadLookDeadZone ? axes[3] : 0.0f;
 
-  input.forward = input.forward || left_y < 0.0f || buttons[0] != 0;
-  input.back = input.back || left_y > 0.0f || buttons[1] != 0;
-  input.left = input.left || left_x < 0.0f || buttons[2] != 0;
-  input.right = input.right || left_x > 0.0f || buttons[3] != 0;
-  input.interact = input.interact || buttons[4] != 0;
+  const bool gamepad_action = buttons[4] != 0;
+  const bool gamepad_pause = buttons[5] != 0;
+  input.forward = input.forward || buttons[0] != 0;
+  input.back = input.back || buttons[1] != 0;
+  input.left = input.left || buttons[2] != 0;
+  input.right = input.right || buttons[3] != 0;
+  input.action_held = input.action_held || gamepad_action;
+  input.action_pressed = input.action_pressed || (gamepad_action && !host.gamepad_action_held);
+  input.interact = input.interact || gamepad_action;
+  input.pause_held = input.pause_held || gamepad_pause;
+  input.pause_pressed = input.pause_pressed || (gamepad_pause && !host.gamepad_pause_held);
+  host.gamepad_action_held = gamepad_action;
+  host.gamepad_pause_held = gamepad_pause;
 
-  input.look_delta_x += right_x * kGamepadLookPixelsPerSecond * input.delta_time;
-  input.look_delta_y += right_y * kGamepadLookPixelsPerSecond * input.delta_time;
+  input.move_x = dominant_axis(input.move_x, left_x);
+  input.move_y = dominant_axis(input.move_y, left_y);
+  input.look_x = dominant_axis(input.look_x, right_x);
+  input.look_y = dominant_axis(input.look_y, right_y);
+}
+
+void apply_touch_input(const Host& host, voxel::CameraInput& input) {
+  input.move_x = dominant_axis(input.move_x, host.touch_move_x);
+  input.move_y = dominant_axis(input.move_y, host.touch_move_y);
+  input.look_x = dominant_axis(input.look_x, host.touch_look_x);
+  input.look_y = dominant_axis(input.look_y, host.touch_look_y);
+  input.action_held = input.action_held || host.touch_action_held;
+  input.action_pressed = input.action_pressed || host.touch_action_pressed;
+  input.interact = input.interact || host.touch_action_pressed;
+  input.pause_held = input.pause_held || host.touch_pause_held;
+  input.pause_pressed = input.pause_pressed || host.touch_pause_pressed;
 }
 
 void frame(void* user_data) {
@@ -176,16 +231,67 @@ void frame(void* user_data) {
   host->input.delta_time = dt;
 
   voxel::CameraInput frame_input = host->input;
-  apply_gamepad_input(frame_input);
+  apply_touch_input(*host, frame_input);
+  apply_gamepad_input(*host, frame_input);
 
   resize_canvas(*host);
   host->app.frame(host->renderer, frame_input);
 
   host->input.look_delta_x = 0.0f;
   host->input.look_delta_y = 0.0f;
+  host->input.action_pressed = false;
+  host->input.pause_pressed = false;
+  host->touch_action_pressed = false;
+  host->touch_pause_pressed = false;
 }
 
 }  // namespace
+
+extern "C" {
+
+EMSCRIPTEN_KEEPALIVE void game_set_touch_move(float x, float y) {
+  g_host.touch_move_x = clamp_axis(x);
+  g_host.touch_move_y = clamp_axis(y);
+  if (std::abs(g_host.touch_move_x) > 0.001f || std::abs(g_host.touch_move_y) > 0.001f) {
+    voxel::audio_resume();
+  }
+}
+
+EMSCRIPTEN_KEEPALIVE void game_set_touch_look(float x, float y) {
+  g_host.touch_look_x = clamp_axis(x);
+  g_host.touch_look_y = clamp_axis(y);
+  if (std::abs(g_host.touch_look_x) > 0.001f || std::abs(g_host.touch_look_y) > 0.001f) {
+    voxel::audio_resume();
+  }
+}
+
+EMSCRIPTEN_KEEPALIVE void game_set_touch_button(int button, int pressed) {
+  const bool down = pressed != 0;
+  if (down) {
+    voxel::audio_resume();
+  }
+
+  if (button == 0) {
+    g_host.touch_action_pressed = down && !g_host.touch_action_held;
+    g_host.touch_action_held = down;
+  } else if (button == 1) {
+    g_host.touch_pause_pressed = down && !g_host.touch_pause_held;
+    g_host.touch_pause_held = down;
+  }
+}
+
+EMSCRIPTEN_KEEPALIVE void game_clear_touch_input() {
+  g_host.touch_move_x = 0.0f;
+  g_host.touch_move_y = 0.0f;
+  g_host.touch_look_x = 0.0f;
+  g_host.touch_look_y = 0.0f;
+  g_host.touch_action_pressed = false;
+  g_host.touch_action_held = false;
+  g_host.touch_pause_pressed = false;
+  g_host.touch_pause_held = false;
+}
+
+}
 
 int main() {
   resize_canvas(g_host);

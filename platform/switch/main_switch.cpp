@@ -13,7 +13,6 @@ namespace {
 constexpr float kStickMax = 32767.0f;
 constexpr float kMoveStickDeadZone = 0.24f;
 constexpr float kLookStickDeadZone = 0.14f;
-constexpr float kLookPixelsPerSecond = 720.0f;
 
 float normalized_axis(s32 value) {
   float normalized = static_cast<float>(value) / kStickMax;
@@ -48,14 +47,13 @@ void update_input(voxel::CameraInput& input, const PadState& pad) {
   input.right = (held & HidNpadButton_Right) != 0;
   input.up = (held & HidNpadButton_A) != 0;
   input.down = (held & HidNpadButton_B) != 0;
+  input.action_held = (held & HidNpadButton_A) != 0;
 
-  input.forward = input.forward || left_y > 0.0f;
-  input.back = input.back || left_y < 0.0f;
-  input.left = input.left || left_x < 0.0f;
-  input.right = input.right || left_x > 0.0f;
+  input.move_x = left_x;
+  input.move_y = -left_y;
 
-  input.look_delta_x += right_x * kLookPixelsPerSecond * input.delta_time;
-  input.look_delta_y -= right_y * kLookPixelsPerSecond * input.delta_time;
+  input.look_x = right_x;
+  input.look_y = -right_y;
 
   if ((held & HidNpadButton_L) != 0) {
     input.look_delta_x -= 4.0f;
@@ -124,6 +122,7 @@ int main(int, char**) {
     voxel::CameraInput input;
     update_input(input, pad);
     input.interact = (down & HidNpadButton_A) != 0;
+    input.action_pressed = input.interact;
     app.frame(renderer, input);
 #if defined(VOXEL_SWITCH_TIMING)
     static int profile_frame = 0;

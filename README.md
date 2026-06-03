@@ -20,7 +20,7 @@ The active renderer path is SDL/OpenGL ES-style platform glue plus shared C++ re
 - Shared `QuadBatch`/bitmap font subtitle path. The test subtitle is `Oh good, you're awake.`
 - Shared camera state and update loop.
 - Browser platform renders through Emscripten WebGL2 using the shared GLES renderer.
-- Switch platform renders through SDL2 and the same shared GLES renderer. The old deko3d renderer is preserved under `platform/switch/deko3d_legacy/` but is not the active target.
+- Switch platform renders through SDL2 and the same shared GLES renderer.
 
 ## Web Build
 
@@ -44,7 +44,7 @@ dist/index.js
 dist/index.wasm
 ```
 
-`build-web/` is only the CMake build directory. Do not deploy it directly.
+`build/web/` is only the CMake build directory. Do not deploy it directly.
 
 Controls:
 
@@ -52,6 +52,8 @@ Controls:
 - Gamepad left stick or D-pad: move the fox
 - Mouse drag: orbit the third-person camera
 - Gamepad right stick: orbit the third-person camera
+- On phones and tablets, touch controls appear automatically:
+  left stick moves, right stick looks/turns, and `A` interacts.
 
 ## GitHub Pages Deployment
 
@@ -80,7 +82,7 @@ export DEVKITPRO=/opt/devkitpro
 make -f Makefile.switch
 ```
 
-This produces `probable-disco.nro`. The normal Switch build uses SDL2 plus the shared GLES renderer and includes throttled nxlink timing output when launched through nxlink.
+This produces `build/switch/probable-disco.nro`. The normal Switch build uses SDL2 plus the shared GLES renderer and includes throttled nxlink timing output when launched through nxlink.
 
 Switch controls:
 
@@ -94,16 +96,18 @@ To build with debug/profile compiler flags:
 make -f Makefile.switch PROFILE=1
 ```
 
-This still produces `probable-disco.nro`; use it for symbols or deeper diagnostics, not as a separate runtime artifact.
+This produces `build/switch-profile/probable-disco.nro`; use it for symbols or deeper diagnostics, not as a separate runtime artifact.
 
 ## Project Layout
 
 ```text
-engine/core/                     Shared app, gameplay, audio, world generation, and mesh data
-src/render/                      Shared renderer API, RenderCommand frame data, GLES renderer, QuadBatch, bitmap font subtitles
+engine/core/                     Shared app, audio, platform interface, and subtitles
+engine/game/                     Shared camera and fox gameplay code
+engine/world/                    Shared voxel chunks, generation, and meshing
+engine/render/                   Shared renderer API, RenderCommand frame data, GLES renderer, QuadBatch, bitmap font subtitles
+engine/math/                     Shared math helpers
 platform/web/                    Emscripten browser entry point and WebGL context glue
 platform/switch/                 devkitPro/libnx entry point and SDL/GLES context glue
-platform/switch/deko3d_legacy/   Preserved old deko3d renderer, inactive for new feature work
 assets/                          Shared assets; subtitle font files are no longer used by the active bitmap-font path
 ```
 

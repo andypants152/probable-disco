@@ -143,9 +143,12 @@ vite.config.ts.timestamp-*
 .vite/
 
 # C++ / Emscripten / Switch build outputs
+build/
 build-core/
 build-web/
 build-switch/
+build-switch-profile/
+build-switch-smoke/
 build-romfs/
 *.elf
 *.nro

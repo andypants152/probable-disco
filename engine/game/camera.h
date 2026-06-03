@@ -13,6 +13,14 @@ struct CameraInput {
   bool up = false;
   bool down = false;
   bool interact = false;
+  bool action_pressed = false;
+  bool action_held = false;
+  bool pause_pressed = false;
+  bool pause_held = false;
+  float move_x = 0.0f;
+  float move_y = 0.0f;
+  float look_x = 0.0f;
+  float look_y = 0.0f;
   float look_delta_x = 0.0f;
   float look_delta_y = 0.0f;
   float delta_time = 1.0f / 60.0f;

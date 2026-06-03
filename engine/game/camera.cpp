@@ -5,27 +5,38 @@
 
 namespace voxel {
 
+namespace {
+
+constexpr float kNormalizedLookPixelsPerSecond = 720.0f;
+
+float clamped_axis(float value) {
+  return std::max(-1.0f, std::min(1.0f, value));
+}
+
+}  // namespace
+
 void Camera::update(const CameraInput& input) {
-  yaw += input.look_delta_x * look_sensitivity;
-  pitch -= input.look_delta_y * look_sensitivity;
+  const float look_delta_x = input.look_delta_x +
+      clamped_axis(input.look_x) * kNormalizedLookPixelsPerSecond * input.delta_time;
+  const float look_delta_y = input.look_delta_y +
+      clamped_axis(input.look_y) * kNormalizedLookPixelsPerSecond * input.delta_time;
+  yaw += look_delta_x * look_sensitivity;
+  pitch -= look_delta_y * look_sensitivity;
   pitch = std::max(-1.45f, std::min(1.45f, pitch));
 
   const Vec3 planar_forward = {std::cos(yaw), 0.0f, std::sin(yaw)};
   const Vec3 planar_right = {-std::sin(yaw), 0.0f, std::cos(yaw)};
 
-  Vec3 move;
-  if (input.forward) {
-    move += planar_forward;
-  }
-  if (input.back) {
-    move -= planar_forward;
-  }
-  if (input.right) {
-    move += planar_right;
-  }
-  if (input.left) {
-    move -= planar_right;
-  }
+  float move_x = clamped_axis(input.move_x);
+  float move_y = clamped_axis(input.move_y);
+  move_y += input.forward ? -1.0f : 0.0f;
+  move_y += input.back ? 1.0f : 0.0f;
+  move_x += input.left ? -1.0f : 0.0f;
+  move_x += input.right ? 1.0f : 0.0f;
+  move_x = clamped_axis(move_x);
+  move_y = clamped_axis(move_y);
+
+  Vec3 move = planar_right * move_x - planar_forward * move_y;
   if (input.up) {
     move.y += 1.0f;
   }

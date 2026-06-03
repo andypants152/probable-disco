@@ -8,15 +8,16 @@ LD := $(CXX)
 
 PROFILE ?= 0
 LTO ?= 0
-DEKO_SMOKE ?= 0
 TARGET ?= probable-disco
 ifeq ($(PROFILE),1)
-  BUILD ?= build-switch-profile
+  BUILD ?= build/switch-profile
 else
-  BUILD ?= build-switch
+  BUILD ?= build/switch
 endif
-SOURCES := engine/core engine/core/world engine/core/game src/render platform/switch
-INCLUDES := engine/core src platform/switch
+override BUILD := $(abspath $(BUILD))
+export BUILD
+SOURCES := engine/core engine/world engine/game engine/render platform/switch
+INCLUDES := engine engine/core platform/switch
 APP_TITLE := Probable Disco Voxel Forest
 APP_AUTHOR := AndyPants
 APP_VERSION := 0.1.0
@@ -28,9 +29,6 @@ ifeq ($(PROFILE),1)
   OPTFLAGS := -O2 -g -DVOXEL_SWITCH_TIMING -DVOXEL_SWITCH_PROFILE
   DEBUGFLAGS := -g
 endif
-ifeq ($(DEKO_SMOKE),1)
-  OPTFLAGS += -DVOXEL_DEKO_SMOKE
-endif
 ifeq ($(LTO),1)
   OPTFLAGS += -flto
 endif
@@ -41,15 +39,15 @@ LDFLAGS = -specs=$(DEVKITPRO)/libnx/switch.specs $(DEBUGFLAGS) $(ARCH) $(if $(fi
 LIBS := -lSDL2 -lGLESv2 -lEGL -lglapi -ldrm_nouveau -lpng16 -lbz2 -lz -lnx -lpthread -lm
 LIBDIRS := $(PORTLIBS) $(LIBNX)
 
-ifneq ($(BUILD),$(notdir $(CURDIR)))
+ifneq ($(BUILD),$(CURDIR))
 
-export OUTPUT := $(CURDIR)/$(TARGET)
+export OUTPUT := $(BUILD)/$(TARGET)
 export TOPDIR := $(CURDIR)
 export VPATH := $(foreach dir,$(SOURCES),$(CURDIR)/$(dir))
-export DEPSDIR := $(CURDIR)/$(BUILD)
+export DEPSDIR := $(BUILD)
 export INCLUDE := $(foreach dir,$(INCLUDES),-I$(CURDIR)/$(dir)) \
   $(foreach dir,$(LIBDIRS),-I$(dir)/include) \
-  -I$(CURDIR)/$(BUILD)
+  -I$(BUILD)
 export LIBPATHS := $(foreach dir,$(LIBDIRS),-L$(dir)/lib)
 
 CPPFILES := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.cpp)))
@@ -67,7 +65,7 @@ all: $(BUILD)
 
 $(BUILD):
 	@[ -d $@ ] || mkdir -p $@
-	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile.switch
+	@$(MAKE) --no-print-directory -C $(BUILD) -f $(TOPDIR)/Makefile.switch
 
 clean:
 	@echo clean ...
