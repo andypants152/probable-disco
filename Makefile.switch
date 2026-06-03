@@ -15,13 +15,11 @@ ifeq ($(PROFILE),1)
 else
   BUILD ?= build-switch
 endif
-SOURCES := engine/core engine/core/world engine/core/game platform/switch
-SHADER_SOURCES := platform/switch/shaders
-INCLUDES := engine/core platform/switch
+SOURCES := engine/core engine/core/world engine/core/game src/render platform/switch
+INCLUDES := engine/core src platform/switch
 APP_TITLE := Probable Disco Voxel Forest
 APP_AUTHOR := AndyPants
 APP_VERSION := 0.1.0
-ROMFS_DIR := $(TOPDIR)/build-romfs
 
 ARCH := -march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -fPIE
 OPTFLAGS := -O3 -DNDEBUG -DVOXEL_SWITCH_TIMING
@@ -40,9 +38,8 @@ CFLAGS = -Wall $(OPTFLAGS) -ffunction-sections -fdata-sections $(ARCH) $(INCLUDE
 CXXFLAGS = $(CFLAGS) -std=gnu++17 -fno-exceptions -fno-rtti
 ASFLAGS = $(DEBUGFLAGS) $(ARCH)
 LDFLAGS = -specs=$(DEVKITPRO)/libnx/switch.specs $(DEBUGFLAGS) $(ARCH) $(if $(filter 1,$(LTO)),-flto,) -Wl,-Map,$(notdir $*.map)
-LIBS := -lSDL2_ttf -lSDL2 -lEGL -lglapi -ldrm_nouveau -ldeko3dd -lfreetype -lharfbuzz -lpng16 -lbz2 -lz -lnx -lpthread -lm
+LIBS := -lSDL2 -lGLESv2 -lEGL -lglapi -ldrm_nouveau -lpng16 -lbz2 -lz -lnx -lpthread -lm
 LIBDIRS := $(PORTLIBS) $(LIBNX)
-NROFLAGS += --romfsdir=$(ROMFS_DIR)
 
 ifneq ($(BUILD),$(notdir $(CURDIR)))
 
@@ -57,44 +54,20 @@ export LIBPATHS := $(foreach dir,$(LIBDIRS),-L$(dir)/lib)
 
 CPPFILES := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.cpp)))
 SFILES := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.s)))
-GLSLFILES := $(foreach dir,$(SHADER_SOURCES),$(notdir $(wildcard $(dir)/*.glsl)))
 OFILES := $(CPPFILES:.cpp=.o) $(SFILES:.s=.o)
-SHADER_BUILD_DIR := $(BUILD)/shaders
-SHADER_BINARIES := $(patsubst %.glsl,$(SHADER_BUILD_DIR)/%.dksh,$(GLSLFILES))
-SHADER_ASM := $(patsubst %.glsl,$(BUILD)/%_dksh.s,$(GLSLFILES))
-OFILES += $(notdir $(SHADER_ASM:.s=.o))
 
 export OFILES
 export APP_TITLE
 export APP_AUTHOR
 export APP_VERSION
 
-.PHONY: all clean $(BUILD) prepare-romfs
+.PHONY: all clean $(BUILD)
 
 all: $(BUILD)
 
-$(BUILD): $(SHADER_ASM) prepare-romfs
+$(BUILD):
 	@[ -d $@ ] || mkdir -p $@
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile.switch
-
-prepare-romfs:
-	@mkdir -p $(ROMFS_DIR)/assets/fonts
-	@cp $(CURDIR)/assets/fonts/subtitle.ttf $(ROMFS_DIR)/assets/fonts/subtitle.ttf
-
-$(SHADER_BUILD_DIR):
-	@mkdir -p $@
-
-$(SHADER_BUILD_DIR)/%_vsh.dksh: $(SHADER_SOURCES)/%_vsh.glsl | $(SHADER_BUILD_DIR)
-	@echo {vert} $(notdir $<)
-	@uam -s vert -o $@ $<
-
-$(SHADER_BUILD_DIR)/%_fsh.dksh: $(SHADER_SOURCES)/%_fsh.glsl | $(SHADER_BUILD_DIR)
-	@echo {frag} $(notdir $<)
-	@uam -s frag -o $@ $<
-
-$(BUILD)/%_dksh.s: $(SHADER_BUILD_DIR)/%.dksh
-	@echo {bin2s} $(notdir $<)
-	@bin2s $< > $@
 
 clean:
 	@echo clean ...

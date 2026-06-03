@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.20)
 
 project(probable_disco_voxel_forest LANGUAGES CXX)
 
+set(WEB_DIST_DIR "${CMAKE_CURRENT_SOURCE_DIR}/dist" CACHE PATH "Static Web/WASM output directory")
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -11,6 +13,9 @@ add_library(voxel_core STATIC
   engine/core/audio.cpp
   engine/core/forest_audio.cpp
   engine/core/subtitles.cpp
+  src/render/bitmap_font.cpp
+  src/render/gles_renderer.cpp
+  src/render/quad_batch.cpp
   engine/core/world/chunk.cpp
   engine/core/world/generator.cpp
   engine/core/world/mesher.cpp
@@ -21,12 +26,13 @@ add_library(voxel_core STATIC
 target_include_directories(voxel_core
   PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/core
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 
 target_compile_features(voxel_core PUBLIC cxx_std_17)
 
 if(EMSCRIPTEN)
-  target_compile_options(voxel_core PUBLIC "SHELL:-s USE_SDL=2" "SHELL:-s USE_SDL_TTF=2")
+  target_compile_options(voxel_core PUBLIC "SHELL:-s USE_SDL=2")
 
   add_executable(voxel_forest_web
     platform/web/main_web.cpp
@@ -48,14 +54,22 @@ if(EMSCRIPTEN)
       "SHELL:-s MAX_WEBGL_VERSION=2"
       "SHELL:-s FULL_ES3=1"
       "SHELL:-s USE_SDL=2"
-      "SHELL:-s USE_SDL_TTF=2"
       "SHELL:-s ALLOW_MEMORY_GROWTH=1"
-      "SHELL:--preload-file ${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts/subtitle.ttf@assets/fonts/subtitle.ttf"
       "SHELL:--shell-file ${CMAKE_CURRENT_SOURCE_DIR}/platform/web/shell.html"
   )
 
   set_target_properties(voxel_forest_web PROPERTIES
     OUTPUT_NAME "index"
+    RUNTIME_OUTPUT_DIRECTORY "${WEB_DIST_DIR}"
     SUFFIX ".html"
   )
+
+  if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/assets")
+    add_custom_command(TARGET voxel_forest_web POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_CURRENT_SOURCE_DIR}/assets"
+        "${WEB_DIST_DIR}/assets"
+      COMMENT "Copying web assets to ${WEB_DIST_DIR}/assets"
+    )
+  endif()
 endif()

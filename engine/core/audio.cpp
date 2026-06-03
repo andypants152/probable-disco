@@ -322,7 +322,7 @@ void audio_shutdown() {
   if (g_audio.sdl_audio_owned) {
     SDL_QuitSubSystem(SDL_INIT_AUDIO);
   }
-  g_audio = {};
+  g_audio = AudioState{};
 }
 
 void audio_update(float dt) {

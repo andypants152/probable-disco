@@ -102,10 +102,6 @@ int main(int, char**) {
 #endif
 
   padConfigureInput(1, HidNpadStyleSet_NpadStandard);
-  const bool romfs_ready = R_SUCCEEDED(romfsInit());
-  if (!romfs_ready) {
-    std::printf("romfs init failed; subtitle font may be unavailable.\n");
-  }
 
   PadState pad;
   padInitializeDefault(&pad);
@@ -114,9 +110,6 @@ int main(int, char**) {
   voxel::App app;
   if (!app.init(renderer)) {
     svcSleepThread(2'000'000'000);
-    if (romfs_ready) {
-      romfsExit();
-    }
 #if defined(VOXEL_SWITCH_TIMING)
     shutdown_timing_output();
 #endif
@@ -213,8 +206,5 @@ int main(int, char**) {
 #if defined(VOXEL_SWITCH_TIMING)
   shutdown_timing_output();
 #endif
-  if (romfs_ready) {
-    romfsExit();
-  }
   return 0;
 }

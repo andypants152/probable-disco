@@ -1,8 +1,8 @@
 # Probable Disco Voxel Forest
 
-Portable C++ voxel forest engine with a shared core and thin platform layers for WebAssembly and Nintendo Switch homebrew.
+Portable C++ voxel forest engine with shared game code, a shared renderer layer, and thin platform layers for WebAssembly and Nintendo Switch homebrew.
 
-The engine core lives under `engine/core` and does not include browser, WebGPU/WebGL, libnx, deko3d, or Switch-specific APIs. Platform code owns rendering, input, and lifecycle.
+The active renderer path is SDL/OpenGL ES-style platform glue plus shared C++ renderer code. Browser and Switch builds now submit the same `RenderFrame` command stream for voxel meshes, simple point lights, sprite/quad overlays, and bitmap-font subtitles. New gameplay/render features should go through this shared path.
 
 ## Current Milestone
 
@@ -16,9 +16,11 @@ The engine core lives under `engine/core` and does not include browser, WebGPU/W
 - Shared-core voxel fox mesh added to the scene.
 - Third-person fox movement and camera follow in the shared core.
 - Platform-neutral mesh with positions, normals, packed colors, micro face coordinates, and indices.
+- Shared `RenderCommand` frame submission for static mesh, dynamic mesh, and subtitle overlay draws.
+- Shared `QuadBatch`/bitmap font subtitle path. The test subtitle is `Oh good, you're awake.`
 - Shared camera state and update loop.
-- Browser platform renders the generated mesh with C++ WebGL2 through Emscripten.
-- Switch platform renders through deko3d behind the same renderer interface.
+- Browser platform renders through Emscripten WebGL2 using the shared GLES renderer.
+- Switch platform renders through SDL2 and the same shared GLES renderer. The old deko3d renderer is preserved under `platform/switch/deko3d_legacy/` but is not the active target.
 
 ## Web Build
 
@@ -34,7 +36,15 @@ Serve the generated files:
 npm run serve:web
 ```
 
-Open `http://localhost:8080`. The build output is `build-web/index.html`, `build-web/index.js`, and `build-web/index.wasm`.
+Open `http://localhost:8080`. The deployable static output is written to `dist/`:
+
+```text
+dist/index.html
+dist/index.js
+dist/index.wasm
+```
+
+`build-web/` is only the CMake build directory. Do not deploy it directly.
 
 Controls:
 
@@ -42,6 +52,24 @@ Controls:
 - Gamepad left stick or D-pad: move the fox
 - Mouse drag: orbit the third-person camera
 - Gamepad right stick: orbit the third-person camera
+
+## GitHub Pages Deployment
+
+The workflow at `.github/workflows/pages.yml` builds the Web/WASM target on every push to `main` and uploads `dist/` to GitHub Pages. It can also be run manually from the Actions tab.
+
+To enable it in GitHub:
+
+```text
+Settings -> Pages -> Source -> GitHub Actions
+```
+
+The deployed page will be available at:
+
+```text
+https://USERNAME.github.io/REPOSITORY_NAME/
+```
+
+The web build is static and uses relative generated file paths, so it can run from a repository subpath instead of only from a domain root.
 
 ## Switch Build
 
@@ -52,7 +80,7 @@ export DEVKITPRO=/opt/devkitpro
 make -f Makefile.switch
 ```
 
-This produces `probable-disco.nro`. The normal Switch build uses deko3d and includes throttled nxlink timing output when launched through nxlink.
+This produces `probable-disco.nro`. The normal Switch build uses SDL2 plus the shared GLES renderer and includes throttled nxlink timing output when launched through nxlink.
 
 Switch controls:
 
@@ -71,8 +99,12 @@ This still produces `probable-disco.nro`; use it for symbols or deeper diagnosti
 ## Project Layout
 
 ```text
-engine/core/        Shared C++ engine code
-platform/web/       Emscripten browser platform and WebGL2 renderer
-platform/switch/    devkitPro/libnx platform skeleton
-assets/             Future shared assets
+engine/core/                     Shared app, gameplay, audio, world generation, and mesh data
+src/render/                      Shared renderer API, RenderCommand frame data, GLES renderer, QuadBatch, bitmap font subtitles
+platform/web/                    Emscripten browser entry point and WebGL context glue
+platform/switch/                 devkitPro/libnx entry point and SDL/GLES context glue
+platform/switch/deko3d_legacy/   Preserved old deko3d renderer, inactive for new feature work
+assets/                          Shared assets; subtitle font files are no longer used by the active bitmap-font path
 ```
+
+Platform-specific files should own lifecycle, input, window/context creation, and presentation only. Game state, voxel meshing, lighting data, sprite/quad batching, and subtitle composition belong in shared code.

@@ -5,12 +5,11 @@
 namespace voxel {
 
 struct SubtitleFrame {
-  const unsigned char* pixels = nullptr;
-  int width = 0;
-  int height = 0;
+  const char* text = "";
   float alpha = 1.0f;
   std::uint32_t generation = 0;
   bool visible = false;
+  bool compact = false;
 };
 
 bool subtitles_init();

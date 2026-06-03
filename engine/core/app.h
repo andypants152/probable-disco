@@ -132,6 +132,7 @@ class App {
   float deposit_cooldown_ = 0.0f;
   std::array<GameplayLight, kMaxGameplayLights> gameplay_lights_ = {};
   int gameplay_light_count_ = 0;
+  RenderFrame render_frame_commands_;
   bool intro_dialogue_started_ = false;
   float intro_dialogue_timer_ = 0.0f;
   int intro_dialogue_line_ = 0;

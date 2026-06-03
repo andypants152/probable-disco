@@ -233,7 +233,7 @@ bool App::init(Renderer& renderer) {
   if (!subtitles_init()) {
     std::printf("Subtitles unavailable; continuing without subtitle overlay.\n");
   } else {
-    subtitles_show("Oh good. You're awake.", 2.35f);
+    subtitles_show("Oh good, you're awake.", 2.35f);
     intro_dialogue_started_ = true;
     intro_dialogue_timer_ = 0.0f;
     intro_dialogue_line_ = 1;
@@ -275,7 +275,6 @@ void App::frame(Renderer& renderer, const CameraInput& input) {
   forest_audio_update(input.delta_time, &player_audio, &world_audio);
   audio_update(input.delta_time);
   subtitles_update(input.delta_time);
-  renderer.upload_subtitle(subtitles_frame());
   frame_stats_.forest_audio = forest_audio_debug_status();
   frame_stats_.carried_fireflies = carried_fireflies_;
   frame_stats_.active_lantern_index = lantern_sequence_;
@@ -337,8 +336,19 @@ void App::frame(Renderer& renderer, const CameraInput& input) {
   }
 
   const auto render_start = Clock::now();
-  renderer.upload_gameplay_lights(gameplay_lights_.data(), gameplay_light_count_);
-  renderer.render_frame(camera_);
+  render_frame_commands_.clear();
+  render_frame_commands_.camera = camera_;
+  render_frame_commands_.light_count = std::min(gameplay_light_count_, kMaxRendererGameplayLights);
+  for (int i = 0; i < render_frame_commands_.light_count; ++i) {
+    render_frame_commands_.lights[static_cast<std::size_t>(i)] = gameplay_lights_[static_cast<std::size_t>(i)];
+  }
+  render_frame_commands_.subtitle = &subtitles_frame();
+  render_frame_commands_.commands.push_back({RenderCommandType::DrawStaticMesh});
+  if (renderer.supports_separate_meshes()) {
+    render_frame_commands_.commands.push_back({RenderCommandType::DrawDynamicMesh});
+  }
+  render_frame_commands_.commands.push_back({RenderCommandType::DrawSubtitle});
+  renderer.render_frame(render_frame_commands_);
   frame_stats_.render_ns = elapsed_ns(render_start, Clock::now());
   frame_stats_.total_ns = elapsed_ns(frame_start, Clock::now());
 }
@@ -842,7 +852,7 @@ bool App::update_owl(const CameraInput& input) {
       owl_state_ = OwlState::Talking;
       owl_prompt_visible_ = false;
       owl_dialogue_line_ = 1;
-      subtitles_show("Oh good. You're awake.", 2.35f);
+      subtitles_show("Oh good, you're awake.", 2.35f);
     }
   } else if (owl_state_ == OwlState::Talking) {
     owl_position_ = perch;
