@@ -2,6 +2,7 @@
 
 #include <SDL2/SDL.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -21,6 +22,18 @@ constexpr int kBufferSamples = 512;
 #endif
 constexpr float kPi = 3.14159265358979323846f;
 constexpr float kTwoPi = 6.28318530717958647692f;
+constexpr float kMoteNoteFrequencies[] = {
+  293.66f,  // D4
+  349.23f,  // F4
+  392.00f,  // G4
+  440.00f,  // A4
+  523.25f,  // C5
+  587.33f,  // D5
+  698.46f,  // F5
+  783.99f,  // G5
+  880.00f,  // A5
+  1046.50f, // C6
+};
 
 enum class VoiceKind {
   Chime,
@@ -51,16 +64,8 @@ struct AudioState {
   bool sdl_audio_started = false;
   bool sdl_audio_owned = false;
   bool gameplay_audio_ready = false;
-  float hum_target_volume = 0.0f;
-  float hum_volume = 0.0f;
-  float hum_target_pitch = 1.0f;
-  float hum_pitch = 1.0f;
-  float hum_phase_a = 0.0f;
-  float hum_phase_b = 0.0f;
-  float hum_lfo_phase = 0.0f;
   Voice voices[kVoiceCount] = {};
   std::uint32_t rng = 0xa53c4d1fu;
-  float debug_timer = 0.0f;
 };
 
 AudioState g_audio;
@@ -131,23 +136,6 @@ void start_voice(VoiceKind kind, float frequency, float amplitude, float duratio
   voice->noise = g_audio.rng ^ 0x6d2b79f5u;
 }
 
-float render_hum(AudioState& state, float sample_rate) {
-  state.hum_volume += (state.hum_target_volume - state.hum_volume) * 0.0012f;
-  state.hum_pitch += (state.hum_target_pitch - state.hum_pitch) * 0.0008f;
-
-  const float pitch = clamp_float(state.hum_pitch, 0.55f, 1.85f);
-  const float base_frequency = 132.0f * pitch;
-  state.hum_phase_a = wrap_phase(state.hum_phase_a + kTwoPi * base_frequency / sample_rate);
-  state.hum_phase_b = wrap_phase(state.hum_phase_b + kTwoPi * (base_frequency * 1.333f) / sample_rate);
-  state.hum_lfo_phase = wrap_phase(state.hum_lfo_phase + kTwoPi * 0.065f / sample_rate);
-
-  const float lfo = 0.72f + 0.06f * std::sin(state.hum_lfo_phase) +
-                    0.025f * std::sin(state.hum_lfo_phase * 2.37f + 1.2f);
-  const float tone = 0.42f * std::sin(state.hum_phase_a) +
-                     0.14f * std::sin(state.hum_phase_b + 0.4f);
-  return tone * state.hum_volume * lfo;
-}
-
 float render_voice(Voice& voice, float sample_rate) {
   voice.age += 1.0f / sample_rate;
   if (voice.age >= voice.duration) {
@@ -195,9 +183,8 @@ void mix_sample(float& left, float& right) {
   AudioState& state = g_audio;
   const float sample_rate = static_cast<float>(state.spec.freq > 0 ? state.spec.freq : kPreferredSampleRate);
 
-  const float mono = render_hum(state, sample_rate);
-  left = mono;
-  right = mono;
+  left = 0.0f;
+  right = 0.0f;
 
   for (Voice& voice : state.voices) {
     if (!voice.active) {
@@ -252,16 +239,6 @@ bool open_device(SDL_AudioFormat format, int frequency) {
   return g_audio.device != 0;
 }
 
-int active_voice_count_locked() {
-  int count = 0;
-  for (const Voice& voice : g_audio.voices) {
-    if (voice.active) {
-      ++count;
-    }
-  }
-  return count;
-}
-
 }  // namespace
 
 bool audio_init() {
@@ -299,8 +276,6 @@ bool audio_init() {
     return false;
   }
 
-  g_audio.hum_target_volume = 0.0f;
-  g_audio.hum_target_pitch = 1.0f;
   g_audio.initialized = true;
 #if defined(__EMSCRIPTEN__)
   g_audio.gameplay_audio_ready = false;
@@ -326,20 +301,7 @@ void audio_shutdown() {
 }
 
 void audio_update(float dt) {
-  if (!g_audio.initialized) {
-    return;
-  }
-
-  g_audio.debug_timer += dt;
-  if (g_audio.debug_timer >= 5.0f) {
-    g_audio.debug_timer = 0.0f;
-    const AudioDebugStatus status = audio_debug_status();
-    std::printf("audio yes rate %d voices %d hum %.2f pitch %.2f\n",
-                status.sample_rate,
-                status.active_voices,
-                status.hum_volume,
-                status.hum_pitch);
-  }
+  (void)dt;
 }
 
 void audio_resume() {
@@ -353,17 +315,6 @@ bool audio_ready_for_gameplay_sound() {
   return g_audio.initialized && g_audio.device != 0 && g_audio.gameplay_audio_ready;
 }
 
-void audio_set_forest_hum(float volume, float pitch) {
-  if (!g_audio.initialized || g_audio.device == 0) {
-    return;
-  }
-
-  SDL_LockAudioDevice(g_audio.device);
-  g_audio.hum_target_volume = clamp_float(volume, 0.0f, 0.18f);
-  g_audio.hum_target_pitch = clamp_float(pitch, 0.55f, 1.85f);
-  SDL_UnlockAudioDevice(g_audio.device);
-}
-
 void audio_play_mote_chime(float intensity) {
   if (!g_audio.initialized || g_audio.device == 0) {
     return;
@@ -371,11 +322,25 @@ void audio_play_mote_chime(float intensity) {
 
   intensity = clamp_float(intensity, 0.0f, 1.0f);
   SDL_LockAudioDevice(g_audio.device);
-  const float random_a = next_random_unit();
   const float random_b = next_random_unit();
-  const float frequency = 920.0f + random_a * 760.0f + intensity * 180.0f;
+  const int note_count = static_cast<int>(sizeof(kMoteNoteFrequencies) / sizeof(kMoteNoteFrequencies[0]));
+  const int note = std::min(note_count - 1, static_cast<int>(next_random_unit() * static_cast<float>(note_count)));
+  const float frequency = kMoteNoteFrequencies[note];
   const float pan = random_b * 1.4f - 0.7f;
-  start_voice(VoiceKind::Chime, frequency, 0.09f + 0.08f * intensity, 1.2f, 4.8f, pan, 0.0f);
+  start_voice(VoiceKind::Chime, frequency, 0.10f + 0.10f * intensity, 1.35f, 4.15f, pan, 0.0f);
+  SDL_UnlockAudioDevice(g_audio.device);
+}
+
+void audio_play_mote_note(float frequency, float intensity, float pan) {
+  if (!g_audio.initialized || g_audio.device == 0) {
+    return;
+  }
+
+  frequency = clamp_float(frequency, 80.0f, 2400.0f);
+  intensity = clamp_float(intensity, 0.0f, 1.0f);
+  pan = clamp_float(pan, -1.0f, 1.0f);
+  SDL_LockAudioDevice(g_audio.device);
+  start_voice(VoiceKind::Chime, frequency, 0.09f + 0.12f * intensity, 1.42f, 3.95f, pan, 0.0f);
   SDL_UnlockAudioDevice(g_audio.device);
 }
 
@@ -401,22 +366,6 @@ void audio_play_footstep_rustle(float intensity) {
   const float pan = next_random_unit() * 0.5f - 0.25f;
   start_voice(VoiceKind::FootstepNoise, 0.0f, 0.014f + 0.018f * intensity, 0.16f, 5.0f, pan, 0.0f);
   SDL_UnlockAudioDevice(g_audio.device);
-}
-
-AudioDebugStatus audio_debug_status() {
-  AudioDebugStatus status;
-  status.initialized = g_audio.initialized;
-  if (!g_audio.initialized || g_audio.device == 0) {
-    return status;
-  }
-
-  SDL_LockAudioDevice(g_audio.device);
-  status.sample_rate = g_audio.spec.freq;
-  status.active_voices = active_voice_count_locked();
-  status.hum_volume = g_audio.hum_target_volume;
-  status.hum_pitch = g_audio.hum_target_pitch;
-  SDL_UnlockAudioDevice(g_audio.device);
-  return status;
 }
 
 }  // namespace voxel

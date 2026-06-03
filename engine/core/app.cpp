@@ -226,17 +226,10 @@ bool App::init(Renderer& renderer) {
 
   if (!audio_init()) {
     std::printf("Audio unavailable; continuing without sound.\n");
-  } else {
-    audio_set_forest_hum(0.0f, 1.0f);
   }
   forest_audio_init();
   if (!subtitles_init()) {
     std::printf("Subtitles unavailable; continuing without subtitle overlay.\n");
-  } else {
-    subtitles_show("Oh good, you're awake.", 2.35f);
-    intro_dialogue_started_ = true;
-    intro_dialogue_timer_ = 0.0f;
-    intro_dialogue_line_ = 1;
   }
 
   initialized_ = true;
@@ -275,7 +268,6 @@ void App::frame(Renderer& renderer, const CameraInput& input) {
   forest_audio_update(input.delta_time, &player_audio, &world_audio);
   audio_update(input.delta_time);
   subtitles_update(input.delta_time);
-  frame_stats_.forest_audio = forest_audio_debug_status();
   frame_stats_.carried_fireflies = carried_fireflies_;
   frame_stats_.active_lantern_index = lantern_sequence_;
   frame_stats_.deposited_fireflies = lanterns_[active_lantern_index_].deposited_fireflies;
@@ -835,13 +827,6 @@ bool App::update_owl(const CameraInput& input) {
     owl_wing_pose_ = 0.0f;
     owl_timer_ = 0.0f;
     owl_dialogue_line_ = 0;
-    if (intro_dialogue_started_ && intro_dialogue_line_ == 1) {
-      intro_dialogue_timer_ += dt;
-      if (intro_dialogue_timer_ >= 2.45f) {
-        intro_dialogue_line_ = 2;
-        subtitles_show("The little lights are scattered. Bring them home.", 3.6f);
-      }
-    }
     const bool near_owl = horizontal_distance(fox_position_, owl_position_) <= kOwlEncounterRadius;
     owl_prompt_visible_ = near_owl;
     if (near_owl && !subtitles_visible()) {

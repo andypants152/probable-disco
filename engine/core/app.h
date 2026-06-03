@@ -32,7 +32,6 @@ class App {
     std::uint64_t scene_rebuild_ns = 0;
     std::uint64_t upload_ns = 0;
     std::uint64_t render_ns = 0;
-    ForestAudioDebugStatus forest_audio = {};
     int carried_fireflies = 0;
     int active_lantern_index = 0;
     int deposited_fireflies = 0;
@@ -133,9 +132,6 @@ class App {
   std::array<GameplayLight, kMaxGameplayLights> gameplay_lights_ = {};
   int gameplay_light_count_ = 0;
   RenderFrame render_frame_commands_;
-  bool intro_dialogue_started_ = false;
-  float intro_dialogue_timer_ = 0.0f;
-  int intro_dialogue_line_ = 0;
   int world_center_chunk_x_ = 0;
   int world_center_chunk_z_ = 0;
   bool initialized_ = false;
