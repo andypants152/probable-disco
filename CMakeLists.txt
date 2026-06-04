@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.20)
 
 project(probable_disco_voxel_forest LANGUAGES CXX)
 
-set(WEB_DIST_DIR "${CMAKE_CURRENT_SOURCE_DIR}/dist" CACHE PATH "Static Web/WASM output directory")
+set(WEB_DIST_DIR "${CMAKE_CURRENT_SOURCE_DIR}/dist/web" CACHE PATH "Static Web/WASM output directory")
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

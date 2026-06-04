@@ -37,10 +37,10 @@ jobs:
 
       - name: Verify deploy files
         run: |
-          test -f dist/index.html
-          test -f dist/index.js
-          test -f dist/index.wasm
-          find dist -maxdepth 3 -type f
+          test -f dist/web/index.html
+          test -f dist/web/index.js
+          test -f dist/web/index.wasm
+          find dist/web -maxdepth 3 -type f
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
@@ -48,7 +48,7 @@ jobs:
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: dist
+          path: dist/web
 
   deploy:
     environment:

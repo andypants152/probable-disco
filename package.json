@@ -14,8 +14,8 @@
   "author": "AndyPants",
   "type": "commonjs",
   "scripts": {
-    "build:web": "cmake -E rm -rf dist && emcmake cmake -S . -B build/web -DCMAKE_BUILD_TYPE=Release && cmake --build build/web && cmake -E echo \"Web build output:\" && find dist -maxdepth 3 -type f",
-    "serve:web": "emrun --no_browser --port 8080 dist",
-    "build:switch": "make -B -f Makefile.switch && cp build/switch/probable-disco.nro probable-disco.nro && cp build/switch/probable-disco.elf probable-disco.elf"
+    "build:web": "cmake -E rm -rf dist/web && emcmake cmake -S . -B build/web -DCMAKE_BUILD_TYPE=Release -DWEB_DIST_DIR=dist/web && cmake --build build/web && cmake -E echo \"Web build output:\" && find dist/web -maxdepth 3 -type f",
+    "serve:web": "emrun --no_browser --port 8080 dist/web",
+    "build:switch": "cmake -E rm -rf dist/switch && cmake -E make_directory dist/switch && make -B -f Makefile.switch && cmake -E copy build/switch/probable-disco.nro dist/switch/probable-disco.nro && cmake -E copy build/switch/probable-disco.elf dist/switch/probable-disco.elf && cmake -E echo \"Switch build output:\" && find dist/switch -maxdepth 1 -type f"
   }
 }

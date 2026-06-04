@@ -36,12 +36,12 @@ Serve the generated files:
 npm run serve:web
 ```
 
-Open `http://localhost:8080`. The deployable static output is written to `dist/`:
+Open `http://localhost:8080`. The deployable static output is written to `dist/web/`:
 
 ```text
-dist/index.html
-dist/index.js
-dist/index.wasm
+dist/web/index.html
+dist/web/index.js
+dist/web/index.wasm
 ```
 
 `build/web/` is only the CMake build directory. Do not deploy it directly.
@@ -57,7 +57,7 @@ Controls:
 
 ## GitHub Pages Deployment
 
-The workflow at `.github/workflows/pages.yml` builds the Web/WASM target on every push to `main` and uploads `dist/` to GitHub Pages. It can also be run manually from the Actions tab.
+The workflow at `.github/workflows/pages.yml` builds the Web/WASM target on every push to `main` and uploads `dist/web/` to GitHub Pages. It can also be run manually from the Actions tab.
 
 To enable it in GitHub:
 
@@ -82,7 +82,18 @@ export DEVKITPRO=/opt/devkitpro
 make -f Makefile.switch
 ```
 
-This produces `build/switch/probable-disco.nro`. The normal Switch build uses SDL2 plus the shared GLES renderer and includes throttled nxlink timing output when launched through nxlink.
+The npm script packages the Switch artifacts in `dist/switch/`:
+
+```sh
+npm run build:switch
+```
+
+```text
+dist/switch/probable-disco.nro
+dist/switch/probable-disco.elf
+```
+
+The underlying Makefile output remains in `build/switch/`. The normal Switch build uses SDL2 plus the shared GLES renderer and includes throttled nxlink timing output when launched through nxlink.
 
 Switch controls:
 
