@@ -19,7 +19,7 @@ namespace {
 
 constexpr int kWorldRenderRadiusChunks = 2;
 constexpr float kFoxMoveSpeed = 8.5f;
-constexpr float kNormalizedLookPixelsPerSecond = 720.0f;
+constexpr float kNormalizedLookPixelsPerSecond = 1800.0f;
 constexpr float kCameraDistance = 13.0f;
 constexpr float kCameraTargetHeight = 1.35f;
 constexpr float kFoxHalfWidth = 0.82f;
@@ -273,6 +273,7 @@ void App::frame(Renderer& renderer, const CameraInput& input) {
   forest_audio_update(input.delta_time, &player_audio, &world_audio);
   audio_update(input.delta_time);
   subtitles_update(input.delta_time);
+  update_lantern_hud();
   frame_stats_.carried_fireflies = carried_fireflies_;
   frame_stats_.active_lantern_index = lantern_sequence_;
   frame_stats_.deposited_fireflies = lanterns_[active_lantern_index_].deposited_fireflies;
@@ -340,6 +341,7 @@ void App::frame(Renderer& renderer, const CameraInput& input) {
     render_frame_commands_.lights[static_cast<std::size_t>(i)] = gameplay_lights_[static_cast<std::size_t>(i)];
   }
   render_frame_commands_.subtitle = &subtitles_frame();
+  render_frame_commands_.hud = &subtitles_hud_frame();
   render_frame_commands_.commands.push_back({RenderCommandType::DrawStaticMesh});
   if (renderer.supports_separate_meshes()) {
     render_frame_commands_.commands.push_back({RenderCommandType::DrawDynamicMesh});
@@ -547,6 +549,15 @@ int App::active_firefly_count() const {
     }
   }
   return count;
+}
+
+void App::update_lantern_hud() {
+  char text[64] = {};
+  std::snprintf(text,
+                sizeof(text),
+                "Lanterns lit %d",
+                lantern_sequence_);
+  subtitles_set_hud_text(text);
 }
 
 Vec3 App::gameplay_objective_position() const {

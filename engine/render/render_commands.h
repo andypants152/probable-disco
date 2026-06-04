@@ -25,11 +25,13 @@ struct RenderFrame {
   std::array<GameplayLight, kMaxRendererGameplayLights> lights = {};
   int light_count = 0;
   const SubtitleFrame* subtitle = nullptr;
+  const SubtitleFrame* hud = nullptr;
   std::vector<RenderCommand> commands;
 
   void clear() {
     light_count = 0;
     subtitle = nullptr;
+    hud = nullptr;
     commands.clear();
   }
 };

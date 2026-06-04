@@ -19,6 +19,7 @@ void subtitles_clear();
 void subtitles_update(float dt);
 bool subtitles_visible();
 void subtitles_set_fps(float fps);
+void subtitles_set_hud_text(const char* text);
 
 const SubtitleFrame& subtitles_frame();
 const SubtitleFrame& subtitles_hud_frame();

@@ -99,6 +99,19 @@ void subtitles_set_fps(float fps) {
 
   char text[32] = {};
   std::snprintf(text, sizeof(text), "FPS %.1f", static_cast<double>(fps));
+  subtitles_set_hud_text(text);
+}
+
+void subtitles_set_hud_text(const char* text) {
+  if (!g_subtitles.initialized) {
+    return;
+  }
+
+  if (text == nullptr || text[0] == '\0') {
+    clear_frame(g_subtitles.hud);
+    return;
+  }
+
   g_subtitles.hud.text = text;
   sync_frame(g_subtitles.hud, true, true);
 }

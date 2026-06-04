@@ -7,7 +7,7 @@ namespace voxel {
 
 namespace {
 
-constexpr float kNormalizedLookPixelsPerSecond = 720.0f;
+constexpr float kNormalizedLookPixelsPerSecond = 1800.0f;
 
 float clamped_axis(float value) {
   return std::max(-1.0f, std::min(1.0f, value));

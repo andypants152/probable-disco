@@ -4,6 +4,7 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <vector>
 
 #include "world/generator.h"
 
@@ -41,6 +42,22 @@ constexpr float kOwlLandmarkX = 0.0f;
 constexpr float kOwlLandmarkZ = -7.0f;
 constexpr Vec3 kOwlPerchOffset = {-3.0f, 0.0f, 1.5f};
 constexpr float kOwlPerchHeight = 1.78f;
+constexpr int kWorldDressingStep = 6;
+constexpr int kMushroomCandidateStep = 4;
+constexpr float kMushroomSpawnChance = 0.24f;
+constexpr float kMushroomClusterChance = 0.24f;
+constexpr float kMushroomClusterRadius = 2.15f;
+constexpr float kMushroomMinObstacleDistance = 1.65f;
+constexpr float kMushroomMinTreeDistance = 1.75f;
+constexpr float kMushroomMinSpacing = 0.95f;
+constexpr float kClusterMushroomMinSpacing = 0.55f;
+constexpr int kMushroomMaxLocalSlope = 1;
+constexpr int kMushroomHeadroomVoxels = 2;
+
+struct MushroomSpot {
+  float x;
+  float z;
+};
 
 std::uint32_t hash2(int x, int z, std::uint32_t seed = 0x6d2b79f5u) {
   std::uint32_t h = seed;
@@ -54,6 +71,12 @@ std::uint32_t hash2(int x, int z, std::uint32_t seed = 0x6d2b79f5u) {
 
 float hash01(int x, int z, std::uint32_t seed = 0x6d2b79f5u) {
   return static_cast<float>(hash2(x, z, seed) & 0xffffu) / 65535.0f;
+}
+
+float distance_sq(float ax, float az, float bx, float bz) {
+  const float dx = ax - bx;
+  const float dz = az - bz;
+  return dx * dx + dz * dz;
 }
 
 float moon_clearing_influence(float world_x, float world_z) {
@@ -304,29 +327,181 @@ void append_log(Mesh& mesh, const TerrainGenerator& generator, int world_x, int 
   }
 }
 
-void append_mushrooms(Mesh& mesh, const TerrainGenerator& generator, int world_x, int world_z, float seed) {
-  const std::array<PackedColor, 3> cap_colors = {{
+bool dressing_origin_for_grid(int grid_x, int grid_z, int& world_x, int& world_z, float& seed) {
+  seed = hash01(grid_x, grid_z, 0xdec042u);
+  const float ox = (hash01(grid_x + 300, grid_z - 300, 0xdec042u) - 0.5f) * 3.6f;
+  const float oz = (hash01(grid_x - 300, grid_z + 300, 0xdec042u) - 0.5f) * 3.6f;
+  world_x = grid_x + static_cast<int>(std::round(ox));
+  world_z = grid_z + static_cast<int>(std::round(oz));
+  return moon_clearing_influence(static_cast<float>(world_x), static_cast<float>(world_z)) <= 0.18f;
+}
+
+bool near_major_dressing_obstacle(int min_x,
+                                  int min_z,
+                                  int size_x,
+                                  int size_z,
+                                  float mushroom_x,
+                                  float mushroom_z) {
+  for (int x = min_x + 4; x < min_x + size_x - 4; x += kWorldDressingStep) {
+    for (int z = min_z + 4; z < min_z + size_z - 4; z += kWorldDressingStep) {
+      int world_x = 0;
+      int world_z = 0;
+      float seed = 0.0f;
+      if (!dressing_origin_for_grid(x, z, world_x, world_z, seed) || seed <= 0.925f) {
+        continue;
+      }
+
+      if (seed > 0.94f) {
+        const float radius = seed > 0.965f ? 1.75f : 1.30f;
+        if (distance_sq(mushroom_x, mushroom_z, static_cast<float>(world_x), static_cast<float>(world_z)) <
+            radius * radius) {
+          return true;
+        }
+        continue;
+      }
+
+      const int length = 3 + static_cast<int>(hash01(world_x - 31, world_z + 29, 0x6c6f6775) * 4.0f);
+      const float half_length = static_cast<float>(length - 1) * 0.5f + 0.80f;
+      const float dx = mushroom_x - static_cast<float>(world_x);
+      const float dz = mushroom_z - static_cast<float>(world_z);
+      if (seed > 0.5f) {
+        if (std::abs(dx) <= half_length && std::abs(dz) <= kMushroomMinObstacleDistance) {
+          return true;
+        }
+      } else if (std::abs(dz) <= half_length && std::abs(dx) <= kMushroomMinObstacleDistance) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+bool already_has_nearby_mushroom(const std::vector<MushroomSpot>& placed,
+                                 float x,
+                                 float z,
+                                 float min_spacing) {
+  const float min_distance_sq = min_spacing * min_spacing;
+  for (const MushroomSpot& spot : placed) {
+    if (distance_sq(x, z, spot.x, spot.z) < min_distance_sq) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool can_place_mushroom_at(const TerrainGenerator& generator,
+                           int min_x,
+                           int min_z,
+                           int size_x,
+                           int size_z,
+                           float mushroom_x,
+                           float mushroom_z,
+                           float scale,
+                           float min_spacing,
+                           const std::vector<MushroomSpot>& placed) {
+  if (mushroom_x < static_cast<float>(min_x + 2) ||
+      mushroom_x > static_cast<float>(min_x + size_x - 2) ||
+      mushroom_z < static_cast<float>(min_z + 2) ||
+      mushroom_z > static_cast<float>(min_z + size_z - 2)) {
+    return false;
+  }
+  if (moon_clearing_influence(mushroom_x, mushroom_z) > 0.18f) {
+    return false;
+  }
+  if (already_has_nearby_mushroom(placed, mushroom_x, mushroom_z, min_spacing)) {
+    return false;
+  }
+  if (near_major_dressing_obstacle(min_x, min_z, size_x, size_z, mushroom_x, mushroom_z)) {
+    return false;
+  }
+
+  const int cell_x = static_cast<int>(std::round(mushroom_x));
+  const int cell_z = static_cast<int>(std::round(mushroom_z));
+  const int ground_y = generator.terrain_height(cell_x, cell_z);
+  if (!is_solid(generator.voxel_at(cell_x, ground_y, cell_z).type) ||
+      is_solid(generator.voxel_at(cell_x, ground_y + 1, cell_z).type)) {
+    return false;
+  }
+
+  const int ledge_radius = static_cast<int>(std::ceil(kMushroomMinObstacleDistance));
+  for (int dz = -ledge_radius; dz <= ledge_radius; ++dz) {
+    for (int dx = -ledge_radius; dx <= ledge_radius; ++dx) {
+      const int local_ground_y = generator.terrain_height(cell_x + dx, cell_z + dz);
+      if (std::abs(local_ground_y - ground_y) > kMushroomMaxLocalSlope) {
+        return false;
+      }
+    }
+  }
+
+  const float footprint_radius = std::max(0.38f, 0.42f * scale);
+  const int min_footprint_x = static_cast<int>(std::floor(mushroom_x - footprint_radius));
+  const int max_footprint_x = static_cast<int>(std::floor(mushroom_x + footprint_radius));
+  const int min_footprint_z = static_cast<int>(std::floor(mushroom_z - footprint_radius));
+  const int max_footprint_z = static_cast<int>(std::floor(mushroom_z + footprint_radius));
+  for (int z = min_footprint_z; z <= max_footprint_z; ++z) {
+    for (int x = min_footprint_x; x <= max_footprint_x; ++x) {
+      if (std::abs(generator.terrain_height(x, z) - ground_y) > kMushroomMaxLocalSlope) {
+        return false;
+      }
+      for (int y = ground_y + 1; y <= ground_y + kMushroomHeadroomVoxels; ++y) {
+        if (is_solid(generator.voxel_at(x, y, z).type)) {
+          return false;
+        }
+      }
+    }
+  }
+
+  const int obstacle_radius = static_cast<int>(std::ceil(kMushroomMinObstacleDistance));
+  const float obstacle_distance_sq = kMushroomMinObstacleDistance * kMushroomMinObstacleDistance;
+  const float tree_distance_sq = kMushroomMinTreeDistance * kMushroomMinTreeDistance;
+  for (int dz = -obstacle_radius; dz <= obstacle_radius; ++dz) {
+    for (int dx = -obstacle_radius; dx <= obstacle_radius; ++dx) {
+      const float distance = static_cast<float>(dx * dx + dz * dz);
+      if (distance > tree_distance_sq) {
+        continue;
+      }
+      for (int y = ground_y + 1; y <= ground_y + 4; ++y) {
+        const VoxelType type = generator.voxel_at(cell_x + dx, y, cell_z + dz).type;
+        if (type == VoxelType::Bark) {
+          return false;
+        }
+        if (distance <= obstacle_distance_sq && type != VoxelType::Air) {
+          return false;
+        }
+      }
+    }
+  }
+
+  return true;
+}
+
+void append_mushroom(Mesh& mesh, const TerrainGenerator& generator, float world_x, float world_z, float scale, float seed) {
+  const std::array<PackedColor, 4> cap_colors = {{
       pack_rgba(217, 236, 255),
       pack_rgba(184, 100, 82),
       pack_rgba(143, 255, 242),
+      pack_rgba(111, 245, 197),
   }};
-  const int count = 4 + static_cast<int>(hash01(world_x + 61, world_z - 53, 0x6d757368u) * 5.0f);
-  for (int i = 0; i < count; ++i) {
-    const float ox = (hash01(world_x + i * 17, world_z + 71, 0x6d757368u) - 0.5f) * 2.6f;
-    const float oz = (hash01(world_x - 67, world_z + i * 19, 0x6d757368u) - 0.5f) * 2.6f;
-    const int bx = world_x + static_cast<int>(ox);
-    const int bz = world_z + static_cast<int>(oz);
-    const float y = static_cast<float>(generator.terrain_height(bx, bz));
-    const float x = static_cast<float>(world_x) + ox;
-    const float z = static_cast<float>(world_z) + oz;
-    const float scale = 0.85f + hash01(world_x + i * 31, world_z - i * 23, 0x6d757368u) * 0.55f;
-    append_box(mesh, {{x - 0.08f * scale, y, z - 0.08f * scale},
-                      {x + 0.08f * scale, y + 0.34f * scale, z + 0.08f * scale},
-                      pack_rgba(240, 221, 184)});
-    append_box(mesh, {{x - 0.22f * scale, y + 0.31f * scale, z - 0.22f * scale},
-                      {x + 0.22f * scale, y + 0.53f * scale, z + 0.22f * scale},
-                      cap_colors[(static_cast<int>(seed * 100.0f) + i) % cap_colors.size()]});
+  const int cell_x = static_cast<int>(std::round(world_x));
+  const int cell_z = static_cast<int>(std::round(world_z));
+  const float y = static_cast<float>(generator.terrain_height(cell_x, cell_z));
+  const PackedColor cap_color = seed > 0.94f
+      ? cap_colors[3]
+      : cap_colors[static_cast<std::size_t>(static_cast<int>(seed * 37.0f) % 3)];
+  append_box(mesh, {{world_x - 0.06f * scale, y, world_z - 0.06f * scale},
+                    {world_x + 0.06f * scale, y + 0.28f * scale, world_z + 0.06f * scale},
+                    pack_rgba(240, 221, 184)});
+  append_box(mesh, {{world_x - 0.20f * scale, y + 0.25f * scale, world_z - 0.20f * scale},
+                    {world_x + 0.20f * scale, y + 0.43f * scale, world_z + 0.20f * scale},
+                    cap_color});
+}
+
+float mushroom_scale_for(int world_x, int world_z, int variant) {
+  const float size_seed = hash01(world_x + variant * 31, world_z - variant * 23, 0x6d757368u);
+  if (hash01(world_x - variant * 11, world_z + variant * 17, 0x6d756267u) > 0.94f) {
+    return 1.05f + size_seed * 0.25f;
   }
+  return 0.58f + size_seed * 0.38f;
 }
 
 void append_charm(Mesh& mesh, const TerrainGenerator& generator, int world_x, int world_z) {
@@ -340,14 +515,12 @@ void append_charm(Mesh& mesh, const TerrainGenerator& generator, int world_x, in
 }
 
 void append_world_dressing(Mesh& mesh, const TerrainGenerator& generator, int min_x, int min_z, int size_x, int size_z) {
-  for (int x = min_x + 4; x < min_x + size_x - 4; x += 6) {
-    for (int z = min_z + 4; z < min_z + size_z - 4; z += 6) {
-      const float seed = hash01(x, z, 0xdec042u);
-      const float ox = (hash01(x + 300, z - 300, 0xdec042u) - 0.5f) * 3.6f;
-      const float oz = (hash01(x - 300, z + 300, 0xdec042u) - 0.5f) * 3.6f;
-      const int world_x = x + static_cast<int>(std::round(ox));
-      const int world_z = z + static_cast<int>(std::round(oz));
-      if (moon_clearing_influence(static_cast<float>(world_x), static_cast<float>(world_z)) > 0.18f) {
+  for (int x = min_x + 4; x < min_x + size_x - 4; x += kWorldDressingStep) {
+    for (int z = min_z + 4; z < min_z + size_z - 4; z += kWorldDressingStep) {
+      int world_x = 0;
+      int world_z = 0;
+      float seed = 0.0f;
+      if (!dressing_origin_for_grid(x, z, world_x, world_z, seed)) {
         continue;
       }
 
@@ -357,8 +530,60 @@ void append_world_dressing(Mesh& mesh, const TerrainGenerator& generator, int mi
         append_stump(mesh, generator, world_x, world_z, seed);
       } else if (seed > 0.925f) {
         append_log(mesh, generator, world_x, world_z, seed);
-      } else if (seed < 0.075f) {
-        append_mushrooms(mesh, generator, world_x, world_z, seed);
+      }
+    }
+  }
+
+  std::vector<MushroomSpot> placed_mushrooms;
+  placed_mushrooms.reserve(static_cast<std::size_t>((size_x / kMushroomCandidateStep + 1) *
+                                                    (size_z / kMushroomCandidateStep + 1)));
+  for (int x = min_x + 3; x < min_x + size_x - 3; x += kMushroomCandidateStep) {
+    for (int z = min_z + 3; z < min_z + size_z - 3; z += kMushroomCandidateStep) {
+      const float seed = hash01(x, z, 0x6d757368u);
+      if (seed > kMushroomSpawnChance) {
+        continue;
+      }
+
+      const float base_x = static_cast<float>(x) +
+          (hash01(x + 211, z - 137, 0x6d757368u) - 0.5f) * 2.3f;
+      const float base_z = static_cast<float>(z) +
+          (hash01(x - 149, z + 197, 0x6d757368u) - 0.5f) * 2.3f;
+      const bool cluster = hash01(x + 59, z - 83, 0x6d757368u) < kMushroomClusterChance;
+      const int count = cluster
+          ? 2 + static_cast<int>(hash01(x - 71, z + 43, 0x6d757368u) * 4.0f)
+          : 1;
+
+      for (int i = 0; i < count; ++i) {
+        float mushroom_x = base_x;
+        float mushroom_z = base_z;
+        if (cluster) {
+          const float angle = hash01(x + i * 17, z - i * 29, 0x6d757368u) * 6.2831853f;
+          const float radius = (0.35f + hash01(x - i * 31, z + i * 23, 0x6d757368u) * 0.65f) *
+              kMushroomClusterRadius;
+          mushroom_x += std::cos(angle) * radius;
+          mushroom_z += std::sin(angle) * radius;
+        }
+
+        const int cell_x = static_cast<int>(std::round(mushroom_x));
+        const int cell_z = static_cast<int>(std::round(mushroom_z));
+        const float scale = mushroom_scale_for(cell_x, cell_z, i);
+        const float min_spacing = cluster ? kClusterMushroomMinSpacing : kMushroomMinSpacing;
+        if (!can_place_mushroom_at(generator,
+                                   min_x,
+                                   min_z,
+                                   size_x,
+                                   size_z,
+                                   mushroom_x,
+                                   mushroom_z,
+                                   scale,
+                                   min_spacing,
+                                   placed_mushrooms)) {
+          continue;
+        }
+
+        const float color_seed = hash01(cell_x + i * 13, cell_z - i * 19, 0x6d757368u);
+        append_mushroom(mesh, generator, mushroom_x, mushroom_z, scale, color_seed);
+        placed_mushrooms.push_back({mushroom_x, mushroom_z});
       }
     }
   }

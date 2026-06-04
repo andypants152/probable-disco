@@ -66,6 +66,7 @@ class App {
   void rebuild_gameplay_lights();
   void add_gameplay_light(Vec3 position, Vec3 color, float radius, float intensity);
   int active_firefly_count() const;
+  void update_lantern_hud();
   void update_camera(const CameraInput& input);
 
   static constexpr int kMaxLanterns = 4;

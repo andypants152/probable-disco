@@ -92,7 +92,7 @@ void main() {
   }
   vec3 outline = vec3(0.015, 0.020, 0.018);
   vec3 fog_color = vec3(0.114, 0.169, 0.153);
-  float fog = clamp(1.0 - exp(-0.020 * 0.020 * v_depth * v_depth), 0.0, 0.96);
+  float fog = clamp(1.0 - exp(-0.045 * 0.045 * v_depth * v_depth), 0.0, 0.985);
   float emissive = clamp(1.0 - v_color.a, 0.0, 1.0);
   vec3 local_visible = local_light * (1.0 - emissive * 0.70);
   vec3 fill = v_color.rgb * light + v_color.rgb * local_visible * 1.15 + local_visible * 0.16;
@@ -301,6 +301,11 @@ void GlesRenderer::render_frame(const RenderFrame& frame) {
       case RenderCommandType::DrawSubtitle:
         if (frame.subtitle != nullptr) {
           build_subtitle_batch(overlay_batch_, font_atlas_, *frame.subtitle, width, height);
+          upload_overlay_batch(overlay_batch_);
+          draw_overlay_batch(width, height);
+        }
+        if (frame.hud != nullptr) {
+          build_subtitle_batch(overlay_batch_, font_atlas_, *frame.hud, width, height);
           upload_overlay_batch(overlay_batch_);
           draw_overlay_batch(width, height);
         }
