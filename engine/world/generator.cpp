@@ -2,11 +2,12 @@
 
 #include <algorithm>
 
+#include "world/art_scale.h"
+
 namespace voxel {
 
 namespace {
 
-constexpr int kTreeCellSize = 8;
 constexpr int kSpawnClearRadius = 10;
 constexpr float kMoonClearingX = 42.0f;
 constexpr float kMoonClearingZ = -104.0f;
@@ -79,20 +80,20 @@ TreeShape tree_shape_for(int tree_x, int tree_z, std::uint32_t seed) {
   const int band_roll = static_cast<int>(h % 100u);
   TreeShape shape = {};
   if (band_roll < 18) {
-    shape.trunk_height = 5 + static_cast<int>((h >> 8) % 3u);
-    shape.canopy_radius = 3;
+    shape.trunk_height = TREE_SHORT_TRUNK_MIN_CELLS + static_cast<int>((h >> 8) % 3u);
+    shape.canopy_radius = TREE_SHORT_LEAF_CLUMP_RADIUS_CELLS;
     shape.canopy_layers = 2;
     shape.inner_leaf_density = kInnerLeafDensity;
     shape.outer_leaf_density = kShortOuterLeafDensity;
   } else if (band_roll < 66) {
-    shape.trunk_height = 8 + static_cast<int>((h >> 8) % 4u);
-    shape.canopy_radius = 3;
+    shape.trunk_height = TREE_MEDIUM_TRUNK_MIN_CELLS + static_cast<int>((h >> 8) % 4u);
+    shape.canopy_radius = TREE_MEDIUM_LEAF_CLUMP_RADIUS_CELLS;
     shape.canopy_layers = 3;
     shape.inner_leaf_density = kInnerLeafDensity;
     shape.outer_leaf_density = kMediumOuterLeafDensity;
   } else {
-    shape.trunk_height = 12 + static_cast<int>((h >> 8) % 5u);
-    shape.canopy_radius = 4;
+    shape.trunk_height = TREE_TALL_TRUNK_MIN_CELLS + static_cast<int>((h >> 8) % 5u);
+    shape.canopy_radius = TREE_TALL_LEAF_CLUMP_RADIUS_CELLS;
     shape.canopy_layers = 3;
     shape.inner_leaf_density = 0.78f;
     shape.outer_leaf_density = kTallOuterLeafDensity;
@@ -196,8 +197,8 @@ int TerrainGenerator::terrain_height(int world_x, int world_z) const {
 }
 
 Voxel TerrainGenerator::tree_voxel_at(int world_x, int y, int world_z) const {
-  const int base_cell_x = floor_div(world_x, kTreeCellSize);
-  const int base_cell_z = floor_div(world_z, kTreeCellSize);
+  const int base_cell_x = floor_div(world_x, TREE_LAYOUT_CELL_SIZE);
+  const int base_cell_z = floor_div(world_z, TREE_LAYOUT_CELL_SIZE);
 
   for (int cell_z = base_cell_z - 1; cell_z <= base_cell_z + 1; ++cell_z) {
     for (int cell_x = base_cell_x - 1; cell_x <= base_cell_x + 1; ++cell_x) {
@@ -246,8 +247,8 @@ bool TerrainGenerator::tree_origin_for_cell(int cell_x, int cell_z, int& origin_
     return false;
   }
 
-  origin_x = cell_x * kTreeCellSize + 2 + static_cast<int>((h >> 8) % 5);
-  origin_z = cell_z * kTreeCellSize + 2 + static_cast<int>((h >> 16) % 5);
+  origin_x = cell_x * TREE_LAYOUT_CELL_SIZE + 2 + static_cast<int>((h >> 8) % 5);
+  origin_z = cell_z * TREE_LAYOUT_CELL_SIZE + 2 + static_cast<int>((h >> 16) % 5);
 
   const int clear_distance = origin_x * origin_x + origin_z * origin_z;
   if (clear_distance < kSpawnClearRadius * kSpawnClearRadius) {

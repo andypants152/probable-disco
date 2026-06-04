@@ -30,6 +30,10 @@ struct Host {
   bool touch_pause_held = false;
   bool gamepad_action_held = false;
   bool gamepad_pause_held = false;
+  bool gamepad_l_held = false;
+  bool gamepad_r_held = false;
+  bool gamepad_zl_held = false;
+  bool gamepad_zr_held = false;
   bool mouse_down = false;
 };
 
@@ -77,6 +81,10 @@ EM_JS(int, poll_web_gamepad, (float* axes, int* buttons), {
     HEAP32[(buttons >> 2) + 3] = pressed(15) ? 1 : 0;
     HEAP32[(buttons >> 2) + 4] = (pressed(0) || pressed(1)) ? 1 : 0;
     HEAP32[(buttons >> 2) + 5] = (pressed(8) || pressed(9)) ? 1 : 0;
+    HEAP32[(buttons >> 2) + 6] = pressed(4) ? 1 : 0;
+    HEAP32[(buttons >> 2) + 7] = pressed(5) ? 1 : 0;
+    HEAP32[(buttons >> 2) + 8] = pressed(6) ? 1 : 0;
+    HEAP32[(buttons >> 2) + 9] = pressed(7) ? 1 : 0;
     return 1;
   }
 
@@ -179,10 +187,14 @@ EM_BOOL mouse_move_callback(int, const EmscriptenMouseEvent* event, void* user_d
 
 void apply_gamepad_input(Host& host, voxel::CameraInput& input) {
   float axes[4] = {};
-  int buttons[6] = {};
+  int buttons[10] = {};
   if (poll_web_gamepad(axes, buttons) == 0) {
     host.gamepad_action_held = false;
     host.gamepad_pause_held = false;
+    host.gamepad_l_held = false;
+    host.gamepad_r_held = false;
+    host.gamepad_zl_held = false;
+    host.gamepad_zr_held = false;
     return;
   }
 
@@ -193,6 +205,28 @@ void apply_gamepad_input(Host& host, voxel::CameraInput& input) {
 
   const bool gamepad_action = buttons[4] != 0;
   const bool gamepad_pause = buttons[5] != 0;
+  const bool gamepad_l = buttons[6] != 0;
+  const bool gamepad_r = buttons[7] != 0;
+  const bool gamepad_zl = buttons[8] != 0;
+  const bool gamepad_zr = buttons[9] != 0;
+
+  if (gamepad_l && !host.gamepad_l_held) {
+    host.app.set_gameplay_light_limit(host.app.gameplay_light_limit() - 1);
+    std::printf("dev light limit %d\n", host.app.gameplay_light_limit());
+  }
+  if (gamepad_r && !host.gamepad_r_held) {
+    host.app.set_gameplay_light_limit(host.app.gameplay_light_limit() + 1);
+    std::printf("dev light limit %d\n", host.app.gameplay_light_limit());
+  }
+  if (gamepad_zl && !host.gamepad_zl_held) {
+    host.app.dev_collect_active_fireflies();
+    std::printf("dev collected active fireflies\n");
+  }
+  if (gamepad_zr && !host.gamepad_zr_held) {
+    host.app.dev_deposit_carried_fireflies();
+    std::printf("dev deposited carried fireflies\n");
+  }
+
   input.forward = input.forward || buttons[0] != 0;
   input.back = input.back || buttons[1] != 0;
   input.left = input.left || buttons[2] != 0;
@@ -204,6 +238,10 @@ void apply_gamepad_input(Host& host, voxel::CameraInput& input) {
   input.pause_pressed = input.pause_pressed || (gamepad_pause && !host.gamepad_pause_held);
   host.gamepad_action_held = gamepad_action;
   host.gamepad_pause_held = gamepad_pause;
+  host.gamepad_l_held = gamepad_l;
+  host.gamepad_r_held = gamepad_r;
+  host.gamepad_zl_held = gamepad_zl;
+  host.gamepad_zr_held = gamepad_zr;
 
   input.move_x = dominant_axis(input.move_x, left_x);
   input.move_y = dominant_axis(input.move_y, left_y);

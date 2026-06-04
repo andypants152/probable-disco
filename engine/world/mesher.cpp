@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <vector>
 
+#include "world/art_scale.h"
 #include "world/generator.h"
 
 namespace voxel {
@@ -43,16 +44,18 @@ constexpr float kOwlLandmarkZ = -7.0f;
 constexpr Vec3 kOwlPerchOffset = {-3.0f, 0.0f, 1.5f};
 constexpr float kOwlPerchHeight = 1.78f;
 constexpr int kWorldDressingStep = 6;
-constexpr int kMushroomCandidateStep = 4;
-constexpr float kMushroomSpawnChance = 0.24f;
+constexpr int kMushroomCandidateStep = 3;
+constexpr float kMushroomSpawnChance = 0.13f;
 constexpr float kMushroomClusterChance = 0.24f;
-constexpr float kMushroomClusterRadius = 2.15f;
+constexpr float kMushroomClusterRadius = 2.35f;
 constexpr float kMushroomMinObstacleDistance = 1.65f;
 constexpr float kMushroomMinTreeDistance = 1.75f;
 constexpr float kMushroomMinSpacing = 0.95f;
 constexpr float kClusterMushroomMinSpacing = 0.55f;
 constexpr int kMushroomMaxLocalSlope = 1;
-constexpr int kMushroomHeadroomVoxels = 2;
+constexpr int kMushroomHeadroomVoxels = 3;
+
+constexpr int kNearVisualDetailLevel = 2;
 
 struct MushroomSpot {
   float x;
@@ -71,6 +74,19 @@ std::uint32_t hash2(int x, int z, std::uint32_t seed = 0x6d2b79f5u) {
 
 float hash01(int x, int z, std::uint32_t seed = 0x6d2b79f5u) {
   return static_cast<float>(hash2(x, z, seed) & 0xffffu) / 65535.0f;
+}
+
+std::uint32_t hash3(int x, int y, int z, std::uint32_t seed = 0x6d2b79f5u) {
+  std::uint32_t h = hash2(x, z, seed);
+  h ^= static_cast<std::uint32_t>(y) * 0xcb1ab31fu;
+  h ^= h >> 15;
+  h *= 0x9e3779b1u;
+  h ^= h >> 16;
+  return h;
+}
+
+float hash01_3(int x, int y, int z, std::uint32_t seed = 0x6d2b79f5u) {
+  return static_cast<float>(hash3(x, y, z, seed) & 0xffffu) / 65535.0f;
 }
 
 float distance_sq(float ax, float az, float bx, float bz) {
@@ -197,6 +213,100 @@ PackedColor color_for(VoxelType type, Vec3 normal, int world_x, int world_z) {
                 shade);
 }
 
+bool is_terrain_type(VoxelType type) {
+  return type == VoxelType::Grass || type == VoxelType::Dirt || type == VoxelType::Stone;
+}
+
+bool is_tree_type(VoxelType type) {
+  return type == VoxelType::Bark || type == VoxelType::Leaves;
+}
+
+int detail_cap(int base_cap, int visual_detail_level) {
+  return visual_detail_level >= kNearVisualDetailLevel ? base_cap : std::max(1, base_cap / 3);
+}
+
+float detail_density_scale(int visual_detail_level) {
+  return visual_detail_level >= kNearVisualDetailLevel ? 1.0f : 0.38f;
+}
+
+struct DetailBudget {
+  int visual_detail_level = kNearVisualDetailLevel;
+  int terrain_voxels = 0;
+  int tree_voxels = 0;
+};
+
+bool allow_terrain_detail(DetailBudget& budget, int count = 1) {
+  const int cap = detail_cap(MAX_TERRAIN_DETAIL_VOXELS_PER_CHUNK, budget.visual_detail_level);
+  if (budget.terrain_voxels + count > cap) {
+    return false;
+  }
+  budget.terrain_voxels += count;
+  return true;
+}
+
+bool allow_tree_detail(DetailBudget& budget, int count = 1) {
+  const int cap = detail_cap(MAX_TREE_DETAIL_VOXELS_PER_CHUNK, budget.visual_detail_level);
+  if (budget.tree_voxels + count > cap) {
+    return false;
+  }
+  budget.tree_voxels += count;
+  return true;
+}
+
+PackedColor varied_bark_color(int world_x, int y, int world_z) {
+  const float variant = hash01_3(world_x, y, world_z, 0x6261726bu);
+  PackedColor base = variant > 0.68f ? pack_rgba(118, 78, 49) : pack_rgba(138, 93, 60);
+  if (variant < 0.18f) {
+    base = pack_rgba(91, 59, 39);
+  }
+  return base;
+}
+
+PackedColor varied_leaf_color(int world_x, int y, int world_z, int variant) {
+  const float roll = hash01_3(world_x + variant * 17, y - variant * 7, world_z + variant * 13, 0x1ea7d15cu);
+  PackedColor base = roll > 0.66f ? pack_rgba(45, 107, 65) : pack_rgba(52, 122, 73);
+  if (roll < 0.22f) {
+    base = pack_rgba(68, 137, 77);
+  }
+  if (roll > 0.90f) {
+    base = pack_rgba(40, 89, 61);
+  }
+  return base;
+}
+
+void emit_top_tile(Mesh& mesh, float min_x, float y, float min_z, float max_x, float max_z, PackedColor color) {
+  const Index start = static_cast<Index>(mesh.vertices.size());
+  const std::array<Vec3, 4> vertices = {{
+      {min_x, y, min_z},
+      {min_x, y, max_z},
+      {max_x, y, max_z},
+      {max_x, y, min_z},
+  }};
+  const std::array<Vec3, 4> micro = {{
+      {-0.5f, 0.5f, -0.5f},
+      {-0.5f, 0.5f, 0.5f},
+      {0.5f, 0.5f, 0.5f},
+      {0.5f, 0.5f, -0.5f},
+  }};
+  const PackedColor shaded_color = shaded(static_cast<std::uint8_t>((color >> 24) & 0xffu),
+                                          static_cast<std::uint8_t>((color >> 16) & 0xffu),
+                                          static_cast<std::uint8_t>((color >> 8) & 0xffu),
+                                          face_shade({0.0f, 1.0f, 0.0f}),
+                                          static_cast<std::uint8_t>(color & 0xffu));
+  for (std::size_t i = 0; i < vertices.size(); ++i) {
+    mesh.vertices.push_back(vertices[i]);
+    mesh.normals.push_back({0.0f, 1.0f, 0.0f});
+    mesh.colors.push_back(shaded_color);
+    mesh.micro_positions.push_back(micro[i]);
+  }
+  mesh.indices.push_back(start + 0);
+  mesh.indices.push_back(start + 1);
+  mesh.indices.push_back(start + 2);
+  mesh.indices.push_back(start + 0);
+  mesh.indices.push_back(start + 2);
+  mesh.indices.push_back(start + 3);
+}
+
 void emit_face(Mesh& mesh, int x, int y, int z, const Face& face, VoxelType type) {
   const Index start = static_cast<Index>(mesh.vertices.size());
   const PackedColor color = color_for(type, face.normal, x, z);
@@ -280,6 +390,315 @@ void append_oriented_box(Mesh& mesh, const Box& box, Vec3 origin, float heading)
 
 void append_local_box(Mesh& mesh, Vec3 origin, float heading, Vec3 min, Vec3 max, PackedColor color) {
   append_oriented_box(mesh, {min, max, color}, origin, heading);
+}
+
+void append_surface_tiles(Mesh& mesh,
+                          const TerrainGenerator& generator,
+                          int world_x,
+                          int y,
+                          int world_z,
+                          VoxelType type,
+                          int visual_detail_level) {
+  const int subdivisions = std::max(1, static_cast<int>(std::round(WORLD_LOGICAL_CELL_SIZE /
+                                                                   TERRAIN_VISUAL_VOXEL_SCALE)));
+  const float tile = WORLD_LOGICAL_CELL_SIZE / static_cast<float>(subdivisions);
+  const float top_y = static_cast<float>(y) + WORLD_LOGICAL_CELL_SIZE;
+  const bool near_detail = visual_detail_level >= kNearVisualDetailLevel;
+  const float clearing = moon_clearing_influence(static_cast<float>(world_x), static_cast<float>(world_z));
+
+  for (int sz = 0; sz < subdivisions; ++sz) {
+    for (int sx = 0; sx < subdivisions; ++sx) {
+      const int detail_x = world_x * subdivisions + sx;
+      const int detail_z = world_z * subdivisions + sz;
+      const float roll = hash01(detail_x, detail_z, 0x715facedu);
+      const float height_step = near_detail && roll > 0.74f
+          ? (roll > 0.92f ? TERRAIN_VISUAL_VOXEL_SCALE * 0.20f : TERRAIN_VISUAL_VOXEL_SCALE * 0.10f)
+          : 0.0f;
+      const float min_x = static_cast<float>(world_x) + static_cast<float>(sx) * tile;
+      const float min_z = static_cast<float>(world_z) + static_cast<float>(sz) * tile;
+      PackedColor color = color_for(type, {0.0f, 1.0f, 0.0f}, detail_x, detail_z);
+
+      if (type == VoxelType::Grass) {
+        if (roll < 0.08f) {
+          color = mix_rgb(color, pack_rgba(82, 69, 48), 0.58f);
+        } else if (roll > 0.86f) {
+          color = mix_rgb(color, pack_rgba(75, 106, 67), 0.42f);
+        }
+        color = mix_rgb(color, pack_rgba(96, 117, 109), clearing * 0.18f);
+      }
+
+      if (height_step > 0.001f) {
+        append_box(mesh, {{min_x, top_y, min_z},
+                          {min_x + tile, top_y + height_step, min_z + tile},
+                          color});
+      } else {
+        emit_top_tile(mesh, min_x, top_y, min_z, min_x + tile, min_z + tile, color);
+      }
+    }
+  }
+}
+
+void append_surface_detail(Mesh& mesh,
+                           const TerrainGenerator& generator,
+                           int world_x,
+                           int y,
+                           int world_z,
+                           DetailBudget& budget) {
+  if (budget.visual_detail_level < kNearVisualDetailLevel) {
+    return;
+  }
+  const float density = TERRAIN_SURFACE_DETAIL_DENSITY * detail_density_scale(budget.visual_detail_level);
+  const float roll = hash01(world_x, world_z, 0x5a7faceu);
+  if (roll > density || !allow_terrain_detail(budget)) {
+    return;
+  }
+
+  const float top_y = static_cast<float>(y) + WORLD_LOGICAL_CELL_SIZE;
+  const float ox = 0.18f + hash01(world_x + 17, world_z - 13, 0x5a7faceu) * 0.62f;
+  const float oz = 0.18f + hash01(world_x - 23, world_z + 29, 0x5a7faceu) * 0.62f;
+  const float x = static_cast<float>(world_x) + ox;
+  const float z = static_cast<float>(world_z) + oz;
+
+  if (roll < density * 0.26f) {
+    const float size = 0.16f + hash01(world_x + 5, world_z - 7, 0x73746f6eu) * 0.13f;
+    append_box(mesh, {{x - size, top_y + 0.01f, z - size * 0.82f},
+                      {x + size, top_y + 0.11f + size * 0.18f, z + size * 0.82f},
+                      pack_rgba(91, 102, 92)});
+  } else if (roll < density * 0.60f) {
+    const bool along_x = hash01(world_x - 11, world_z + 19, 0x726f6f74u) > 0.5f;
+    const float length = 0.46f + hash01(world_x + 31, world_z - 37, 0x726f6f74u) * 0.34f;
+    const float half_width = 0.055f;
+    if (along_x) {
+      append_box(mesh, {{x - length * 0.5f, top_y + 0.012f, z - half_width},
+                        {x + length * 0.5f, top_y + 0.095f, z + half_width},
+                        pack_rgba(99, 64, 39)});
+    } else {
+      append_box(mesh, {{x - half_width, top_y + 0.012f, z - length * 0.5f},
+                        {x + half_width, top_y + 0.095f, z + length * 0.5f},
+                        pack_rgba(99, 64, 39)});
+    }
+  } else {
+    const float size = 0.24f + hash01(world_x + 41, world_z - 43, 0x6d6f7373u) * 0.18f;
+    append_box(mesh, {{x - size * 0.5f, top_y + 0.006f, z - size * 0.5f},
+                      {x + size * 0.5f, top_y + 0.030f, z + size * 0.5f},
+                      pack_rgba(54, 92, 57)});
+  }
+
+  (void)generator;
+}
+
+void append_ledge_breakup(Mesh& mesh,
+                          int world_x,
+                          int y,
+                          int world_z,
+                          const Face& face,
+                          DetailBudget& budget) {
+  if (!LEDGE_BREAKUP_ENABLED || budget.visual_detail_level < kNearVisualDetailLevel) {
+    return;
+  }
+  const float density = TERRAIN_SURFACE_DETAIL_DENSITY * 0.72f;
+  if (hash01(world_x + face.dx * 7, world_z + face.dz * 11, 0x1ed9eb0u) > density ||
+      !allow_terrain_detail(budget)) {
+    return;
+  }
+
+  const float top_y = static_cast<float>(y) + 0.58f;
+  const float edge_jitter = 0.18f + hash01(world_x - face.dx * 13, world_z - face.dz * 17, 0x1ed9eb0u) * 0.48f;
+  Vec3 min = {static_cast<float>(world_x) + 0.35f, top_y, static_cast<float>(world_z) + 0.35f};
+  Vec3 max = {static_cast<float>(world_x) + 0.65f, top_y + 0.25f, static_cast<float>(world_z) + 0.65f};
+
+  if (face.dx > 0) {
+    min.x = static_cast<float>(world_x) + 0.82f;
+    max.x = static_cast<float>(world_x) + 1.04f;
+    min.z = static_cast<float>(world_z) + edge_jitter;
+    max.z = min.z + 0.24f;
+  } else if (face.dx < 0) {
+    min.x = static_cast<float>(world_x) - 0.04f;
+    max.x = static_cast<float>(world_x) + 0.18f;
+    min.z = static_cast<float>(world_z) + edge_jitter;
+    max.z = min.z + 0.24f;
+  } else if (face.dz > 0) {
+    min.z = static_cast<float>(world_z) + 0.82f;
+    max.z = static_cast<float>(world_z) + 1.04f;
+    min.x = static_cast<float>(world_x) + edge_jitter;
+    max.x = min.x + 0.24f;
+  } else {
+    min.z = static_cast<float>(world_z) - 0.04f;
+    max.z = static_cast<float>(world_z) + 0.18f;
+    min.x = static_cast<float>(world_x) + edge_jitter;
+    max.x = min.x + 0.24f;
+  }
+
+  append_box(mesh, {min, max, pack_rgba(82, 70, 48)});
+}
+
+bool has_exposed_tree_neighbor(const TerrainGenerator& generator, int world_x, int y, int world_z) {
+  for (const Face& face : kFaces) {
+    if (!is_tree_type(generator.voxel_at(world_x + face.dx, y + face.dy, world_z + face.dz).type)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void append_tree_box(Mesh& mesh, DetailBudget& budget, Vec3 min, Vec3 max, PackedColor color) {
+  if (!allow_tree_detail(budget)) {
+    return;
+  }
+  append_box(mesh, {min, max, color});
+}
+
+void append_root_detail(Mesh& mesh,
+                        const TerrainGenerator& generator,
+                        int world_x,
+                        int y,
+                        int world_z,
+                        DetailBudget& budget) {
+  if (!ROOT_DETAIL_ENABLED || budget.visual_detail_level < kNearVisualDetailLevel) {
+    return;
+  }
+
+  const std::array<Vec3, 4> directions = {{
+      {1.0f, 0.0f, 0.0f},
+      {-1.0f, 0.0f, 0.0f},
+      {0.0f, 0.0f, 1.0f},
+      {0.0f, 0.0f, -1.0f},
+  }};
+  for (std::size_t i = 0; i < directions.size(); ++i) {
+    const Vec3 dir = directions[i];
+    const float roll = hash01_3(world_x + static_cast<int>(i) * 19,
+                                y,
+                                world_z - static_cast<int>(i) * 23,
+                                0x726f6f74u);
+    if (roll > 0.42f * TREE_TRUNK_DETAIL_DENSITY || !allow_tree_detail(budget)) {
+      continue;
+    }
+    const int sample_x = world_x + static_cast<int>(dir.x);
+    const int sample_z = world_z + static_cast<int>(dir.z);
+    const float root_y = static_cast<float>(generator.terrain_height(sample_x, sample_z)) + WORLD_LOGICAL_CELL_SIZE + 0.03f;
+    const float length = 0.54f + roll * 0.52f;
+    const float width = 0.08f + roll * 0.04f;
+    const float center_x = static_cast<float>(world_x) + 0.5f;
+    const float center_z = static_cast<float>(world_z) + 0.5f;
+    if (dir.x != 0.0f) {
+      const float start_x = center_x + dir.x * 0.20f;
+      const float end_x = center_x + dir.x * length;
+      append_box(mesh, {{std::min(start_x, end_x), root_y, center_z - width},
+                        {std::max(start_x, end_x), root_y + 0.14f, center_z + width},
+                        pack_rgba(105, 68, 42)});
+    } else {
+      const float start_z = center_z + dir.z * 0.20f;
+      const float end_z = center_z + dir.z * length;
+      append_box(mesh, {{center_x - width, root_y, std::min(start_z, end_z)},
+                        {center_x + width, root_y + 0.14f, std::max(start_z, end_z)},
+                        pack_rgba(105, 68, 42)});
+    }
+  }
+}
+
+void append_bark_visual(Mesh& mesh,
+                        const TerrainGenerator& generator,
+                        int world_x,
+                        int y,
+                        int world_z,
+                        DetailBudget& budget) {
+  const bool is_base = generator.voxel_at(world_x, y - 1, world_z).type != VoxelType::Bark;
+  const float segment_height = TREE_VISUAL_VOXEL_SCALE;
+  const int segments = std::max(1, static_cast<int>(std::round(WORLD_LOGICAL_CELL_SIZE / segment_height)));
+  const float center_x = static_cast<float>(world_x) + 0.5f;
+  const float center_z = static_cast<float>(world_z) + 0.5f;
+
+  for (int segment = 0; segment < segments; ++segment) {
+    const float segment_min_y = static_cast<float>(y) + static_cast<float>(segment) * segment_height;
+    const float segment_max_y = segment_min_y + segment_height + 0.015f;
+    const float jitter_x = (hash01_3(world_x + segment * 3, y, world_z, 0x7472756eu) - 0.5f) * 0.04f;
+    const float jitter_z = (hash01_3(world_x, y, world_z - segment * 5, 0x7472756eu) - 0.5f) * 0.04f;
+    const float radius_x = 0.29f + hash01_3(world_x, y + segment, world_z, 0x62726b31u) * 0.035f;
+    const float radius_z = 0.29f + hash01_3(world_x + segment, y, world_z, 0x62726b32u) * 0.035f;
+    append_tree_box(mesh,
+                    budget,
+                    {center_x + jitter_x - radius_x, segment_min_y, center_z + jitter_z - radius_z},
+                    {center_x + jitter_x + radius_x, segment_max_y, center_z + jitter_z + radius_z},
+                    varied_bark_color(world_x, y + segment, world_z));
+
+    const float protrusion_roll = hash01_3(world_x - segment * 11, y, world_z + segment * 17, 0x6b6e6f74u);
+    if (protrusion_roll < TREE_TRUNK_DETAIL_DENSITY * 0.70f * detail_density_scale(budget.visual_detail_level)) {
+      const int side = static_cast<int>(hash3(world_x, y + segment, world_z, 0x73696465u) % 4u);
+      Vec3 min = {center_x - 0.09f, segment_min_y + 0.14f, center_z - 0.09f};
+      Vec3 max = {center_x + 0.09f, segment_min_y + 0.27f, center_z + 0.09f};
+      if (side == 0) {
+        min.x = center_x + radius_x - 0.02f;
+        max.x = center_x + radius_x + 0.10f;
+      } else if (side == 1) {
+        min.x = center_x - radius_x - 0.10f;
+        max.x = center_x - radius_x + 0.02f;
+      } else if (side == 2) {
+        min.z = center_z + radius_z - 0.02f;
+        max.z = center_z + radius_z + 0.10f;
+      } else {
+        min.z = center_z - radius_z - 0.10f;
+        max.z = center_z - radius_z + 0.02f;
+      }
+      append_tree_box(mesh, budget, min, max, protrusion_roll < 0.10f ? pack_rgba(78, 48, 31) : pack_rgba(118, 76, 45));
+    }
+  }
+
+  if (is_base) {
+    append_root_detail(mesh, generator, world_x, y, world_z, budget);
+  }
+}
+
+void append_leaf_visual(Mesh& mesh,
+                        const TerrainGenerator& generator,
+                        int world_x,
+                        int y,
+                        int world_z,
+                        DetailBudget& budget) {
+  const bool exposed = has_exposed_tree_neighbor(generator, world_x, y, world_z);
+  const float hole_roll = hash01_3(world_x, y, world_z, 0x67617073u);
+  if (!exposed && hole_roll > 0.96f) {
+    return;
+  }
+  if (exposed && hole_roll > 0.985f) {
+    return;
+  }
+
+  const float density = TREE_LEAF_DETAIL_DENSITY * detail_density_scale(budget.visual_detail_level);
+  const int base_clumps = exposed ? 3 : 2;
+  const int bonus_clumps = budget.visual_detail_level >= kNearVisualDetailLevel
+      ? static_cast<int>(hash3(world_x, y, world_z, 0x1eafc1u) % 2u)
+      : 0;
+  const int clumps = base_clumps + bonus_clumps;
+  for (int clump = 0; clump < clumps; ++clump) {
+    const float clump_roll = hash01_3(world_x + clump * 17, y - clump * 5, world_z + clump * 11, 0x1eafc1u);
+    if (clump > 0 && clump_roll > density) {
+      continue;
+    }
+    if (!allow_tree_detail(budget)) {
+      continue;
+    }
+
+    constexpr std::array<Vec3, 4> kLeafClumpAnchors = {{
+        {0.34f, 0.36f, 0.34f},
+        {0.66f, 0.40f, 0.62f},
+        {0.36f, 0.68f, 0.66f},
+        {0.64f, 0.70f, 0.34f},
+    }};
+    const Vec3 anchor = kLeafClumpAnchors[static_cast<std::size_t>(clump % static_cast<int>(kLeafClumpAnchors.size()))];
+    const float sx = anchor.x + (hash01_3(world_x + clump * 31, y, world_z, 0x1eafc1u) - 0.5f) * 0.12f;
+    const float sy = anchor.y + (hash01_3(world_x, y + clump * 13, world_z, 0x1eafc1u) - 0.5f) * 0.10f;
+    const float sz = anchor.z + (hash01_3(world_x, y, world_z - clump * 29, 0x1eafc1u) - 0.5f) * 0.12f;
+    const float size = TREE_VISUAL_VOXEL_SCALE * (0.82f + hash01_3(world_x + clump, y, world_z, 0x1eafc1u) * 0.18f);
+    const float half = size * 0.5f;
+    const Vec3 center = {
+        static_cast<float>(world_x) + sx,
+        static_cast<float>(y) + sy,
+        static_cast<float>(world_z) + sz,
+    };
+    append_box(mesh, {{center.x - half, center.y - half, center.z - half},
+                      {center.x + half, center.y + half, center.z + half},
+                      varied_leaf_color(world_x, y, world_z, clump)});
+  }
 }
 
 void append_rock(Mesh& mesh, const TerrainGenerator& generator, int world_x, int world_z, float seed) {
@@ -484,7 +903,7 @@ void append_mushroom(Mesh& mesh, const TerrainGenerator& generator, float world_
   }};
   const int cell_x = static_cast<int>(std::round(world_x));
   const int cell_z = static_cast<int>(std::round(world_z));
-  const float y = static_cast<float>(generator.terrain_height(cell_x, cell_z));
+  const float y = static_cast<float>(generator.terrain_height(cell_x, cell_z)) + 1.0f;
   const PackedColor cap_color = seed > 0.94f
       ? cap_colors[3]
       : cap_colors[static_cast<std::size_t>(static_cast<int>(seed * 37.0f) % 3)];
@@ -498,10 +917,10 @@ void append_mushroom(Mesh& mesh, const TerrainGenerator& generator, float world_
 
 float mushroom_scale_for(int world_x, int world_z, int variant) {
   const float size_seed = hash01(world_x + variant * 31, world_z - variant * 23, 0x6d757368u);
-  if (hash01(world_x - variant * 11, world_z + variant * 17, 0x6d756267u) > 0.94f) {
-    return 1.05f + size_seed * 0.25f;
+  if (hash01(world_x - variant * 11, world_z + variant * 17, 0x6d756267u) > 0.88f) {
+    return 1.80f + size_seed * 0.75f;
   }
-  return 0.58f + size_seed * 0.38f;
+  return 1.15f + size_seed * 0.65f;
 }
 
 void append_charm(Mesh& mesh, const TerrainGenerator& generator, int world_x, int world_z) {
@@ -625,13 +1044,22 @@ Mesh build_chunk_mesh(const Chunk& chunk) {
   return mesh;
 }
 
-Mesh build_world_mesh(const TerrainGenerator& generator, int min_x, int min_z, int size_x, int size_z) {
+Mesh build_world_mesh(const TerrainGenerator& generator,
+                      int min_x,
+                      int min_z,
+                      int size_x,
+                      int size_z,
+                      int visual_detail_level) {
   Mesh mesh;
-  mesh.vertices.reserve(static_cast<std::size_t>(size_x * size_z * 8));
-  mesh.normals.reserve(static_cast<std::size_t>(size_x * size_z * 8));
-  mesh.colors.reserve(static_cast<std::size_t>(size_x * size_z * 8));
-  mesh.micro_positions.reserve(static_cast<std::size_t>(size_x * size_z * 8));
-  mesh.indices.reserve(static_cast<std::size_t>(size_x * size_z * 12));
+  const std::size_t base_reserve = static_cast<std::size_t>(size_x * size_z * 18);
+  mesh.vertices.reserve(base_reserve);
+  mesh.normals.reserve(base_reserve);
+  mesh.colors.reserve(base_reserve);
+  mesh.micro_positions.reserve(base_reserve);
+  mesh.indices.reserve(static_cast<std::size_t>(size_x * size_z * 28));
+
+  DetailBudget detail_budget = {};
+  detail_budget.visual_detail_level = visual_detail_level;
 
   for (int y = 0; y < kChunkSize; ++y) {
     for (int z = min_z; z < min_z + size_z; ++z) {
@@ -641,10 +1069,29 @@ Mesh build_world_mesh(const TerrainGenerator& generator, int min_x, int min_z, i
           continue;
         }
 
+        if (voxel.type == VoxelType::Bark) {
+          append_bark_visual(mesh, generator, x, y, z, detail_budget);
+          continue;
+        }
+        if (voxel.type == VoxelType::Leaves) {
+          append_leaf_visual(mesh, generator, x, y, z, detail_budget);
+          continue;
+        }
+
         for (const Face& face : kFaces) {
           const Voxel neighbor = generator.voxel_at(x + face.dx, y + face.dy, z + face.dz);
           if (!is_solid(neighbor.type)) {
-            emit_face(mesh, x, y, z, face, voxel.type);
+            if (face.dy > 0 && is_terrain_type(voxel.type)) {
+              append_surface_tiles(mesh, generator, x, y, z, voxel.type, visual_detail_level);
+              if (voxel.type == VoxelType::Grass) {
+                append_surface_detail(mesh, generator, x, y, z, detail_budget);
+              }
+            } else {
+              emit_face(mesh, x, y, z, face, voxel.type);
+              if (voxel.type == VoxelType::Grass && face.dy == 0 && y == generator.terrain_height(x, z)) {
+                append_ledge_breakup(mesh, x, y, z, face, detail_budget);
+              }
+            }
           }
         }
       }

@@ -104,6 +104,7 @@ class App {
   struct CachedTerrainChunk {
     int chunk_x = 0;
     int chunk_z = 0;
+    int visual_detail_level = 0;
     Mesh mesh;
   };
 

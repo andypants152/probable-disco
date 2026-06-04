@@ -17,7 +17,8 @@ namespace voxel {
 
 namespace {
 
-constexpr int kWorldRenderRadiusChunks = 2;
+constexpr int kWorldRenderRadiusChunks = 3;
+constexpr int kWorldHighDetailRadiusChunks = 2;
 constexpr float kFoxMoveSpeed = 8.5f;
 constexpr float kNormalizedLookPixelsPerSecond = 1800.0f;
 constexpr float kCameraDistance = 13.0f;
@@ -56,6 +57,10 @@ constexpr float LANTERN_LIGHT_PULSE_DURATION = 2.4f;
 constexpr float LANTERN_LIGHT_PULSE_RADIUS = 22.0f;
 constexpr float kFireflyLightRadius = 4.4f;
 constexpr float kCarriedFireflyLightRadius = 4.0f;
+constexpr float kFireflyLightFullDistance = 18.0f;
+constexpr float kFireflyLightCullDistance = 30.0f;
+constexpr float kLanternLightFullDistance = 30.0f;
+constexpr float kLanternLightCullDistance = 52.0f;
 constexpr int kMaxLitLanternLights = 3;
 constexpr float kFireflyCollectRadius = 1.85f;
 constexpr float kFireflyDepositRadius = 3.15f;
@@ -192,6 +197,16 @@ float horizontal_distance(Vec3 a, Vec3 b) {
   const float dx = b.x - a.x;
   const float dz = b.z - a.z;
   return std::sqrt(dx * dx + dz * dz);
+}
+
+float distance_fade(float distance, float full_distance, float cull_distance) {
+  if (distance <= full_distance) {
+    return 1.0f;
+  }
+  if (distance >= cull_distance) {
+    return 0.0f;
+  }
+  return 1.0f - smoothstep((distance - full_distance) / (cull_distance - full_distance));
 }
 
 Vec3 terrain_position(const TerrainGenerator& generator, Vec3 anchor, float height_offset) {
@@ -404,24 +419,33 @@ void App::rebuild_world_mesh() {
 
   for (int chunk_z = min_chunk_z; chunk_z <= max_chunk_z; ++chunk_z) {
     for (int chunk_x = min_chunk_x; chunk_x <= max_chunk_x; ++chunk_x) {
-      const auto cached = std::find_if(terrain_chunk_cache_.begin(),
-                                       terrain_chunk_cache_.end(),
-                                       [chunk_x, chunk_z](const CachedTerrainChunk& chunk) {
-                                         return chunk.chunk_x == chunk_x && chunk.chunk_z == chunk_z;
-                                       });
-      if (cached != terrain_chunk_cache_.end()) {
+      auto cached = std::find_if(terrain_chunk_cache_.begin(),
+                                 terrain_chunk_cache_.end(),
+                                 [chunk_x, chunk_z](const CachedTerrainChunk& chunk) {
+                                   return chunk.chunk_x == chunk_x && chunk.chunk_z == chunk_z;
+                                 });
+      const int chunk_distance = std::max(std::abs(chunk_x - world_center_chunk_x_),
+                                          std::abs(chunk_z - world_center_chunk_z_));
+      const int visual_detail_level = chunk_distance <= kWorldHighDetailRadiusChunks ? 2 : 1;
+      if (cached != terrain_chunk_cache_.end() && cached->visual_detail_level == visual_detail_level) {
         continue;
       }
 
       CachedTerrainChunk chunk;
       chunk.chunk_x = chunk_x;
       chunk.chunk_z = chunk_z;
+      chunk.visual_detail_level = visual_detail_level;
       chunk.mesh = build_world_mesh(generator_,
                                     chunk_x * kChunkSize,
                                     chunk_z * kChunkSize,
                                     kChunkSize,
-                                    kChunkSize);
-      terrain_chunk_cache_.push_back(std::move(chunk));
+                                    kChunkSize,
+                                    visual_detail_level);
+      if (cached != terrain_chunk_cache_.end()) {
+        *cached = std::move(chunk);
+      } else {
+        terrain_chunk_cache_.push_back(std::move(chunk));
+      }
     }
   }
 
@@ -741,10 +765,15 @@ void App::rebuild_gameplay_lights() {
     if (!firefly.active || firefly.collected) {
       continue;
     }
+    const float distance = horizontal_distance(fox_position_, firefly.position);
+    const float light_fade = distance_fade(distance, kFireflyLightFullDistance, kFireflyLightCullDistance);
+    if (light_fade <= 0.0f) {
+      continue;
+    }
     add_gameplay_light(firefly.position,
                        firefly_color,
                        kFireflyLightRadius,
-                       0.30f + firefly.glow_intensity * 0.44f);
+                       (0.30f + firefly.glow_intensity * 0.44f) * light_fade);
   }
 
   std::array<int, kMaxLitLanternLights> closest_lanterns = {};
@@ -756,6 +785,9 @@ void App::rebuild_gameplay_lights() {
       continue;
     }
     const float distance = horizontal_distance(fox_position_, lit_lantern.position);
+    if (distance >= kLanternLightCullDistance) {
+      continue;
+    }
     int insert_at = closest_lantern_count;
     while (insert_at > 0 && distance < closest_distances[static_cast<std::size_t>(insert_at - 1)]) {
       if (insert_at < kMaxLitLanternLights) {
@@ -775,6 +807,11 @@ void App::rebuild_gameplay_lights() {
 
   for (int i = 0; i < closest_lantern_count; ++i) {
     const Lantern& lit_lantern = lanterns_[static_cast<std::size_t>(closest_lanterns[static_cast<std::size_t>(i)])];
+    const float distance = closest_distances[static_cast<std::size_t>(i)];
+    const float light_fade = distance_fade(distance, kLanternLightFullDistance, kLanternLightCullDistance);
+    if (light_fade <= 0.0f) {
+      continue;
+    }
     const Vec3 lantern_light_position = lit_lantern.position + Vec3{0.0f, 1.85f, 0.0f};
     const float pulse_t = lit_lantern.pulse_timer > 0.0f
         ? 1.0f - lit_lantern.pulse_timer / LANTERN_LIGHT_PULSE_DURATION
@@ -783,11 +820,11 @@ void App::rebuild_gameplay_lights() {
     add_gameplay_light(lantern_light_position,
                        lantern_color,
                        LANTERN_LIGHT_RADIUS + pulse * LANTERN_LIGHT_PULSE_RADIUS,
-                       LANTERN_LIGHT_INTENSITY + pulse);
+                       (LANTERN_LIGHT_INTENSITY + pulse) * light_fade);
     add_gameplay_light(lit_lantern.position + Vec3{0.0f, 0.26f, 0.0f},
                        lantern_color,
                        LANTERN_GROUND_GLOW_RADIUS,
-                       0.42f);
+                       0.42f * light_fade);
   }
 }
 

@@ -52,6 +52,7 @@ Controls:
 - Gamepad left stick or D-pad: move the fox
 - Mouse drag: orbit the third-person camera
 - Gamepad right stick: orbit the third-person camera
+- Gamepad dev controls: tap `L1`/`R1` to lower/raise the gameplay light cap, `L2` to collect the active lantern's fireflies, `R2` to force-deposit and advance the lantern
 - On phones and tablets, touch controls appear automatically:
   left stick moves, right stick looks/turns, and `A` interacts.
 
