@@ -714,8 +714,9 @@ void append_owl_mesh(Mesh& mesh, Vec3 owl_position, float heading_radians, float
 
 constexpr float FIREFLY_CORE_SIZE = 0.28f;
 constexpr float FIREFLY_HALO_SIZE = 0.58f;
-constexpr float FIREFLY_EMISSIVE_INTENSITY = 0.92f;
-constexpr float FIREFLY_NEAR_PULSE_INTENSITY = 0.35f;
+constexpr float FIREFLY_EMISSIVE_INTENSITY = 0.34f;
+constexpr float FIREFLY_TWINKLE_EMISSIVE_BOOST = 0.66f;
+constexpr float FIREFLY_TWINKLE_SCALE_DEPTH = 0.28f;
 constexpr float LANTERN_SCALE = 1.38f;
 constexpr float LANTERN_GLOW_RADIUS = 1.55f;
 constexpr float LANTERN_UNLIT_EMISSIVE = 0.50f;
@@ -729,10 +730,11 @@ std::uint8_t emissive_alpha(float intensity) {
 void append_firefly_mesh(Mesh& mesh, Vec3 position, float glow_intensity, bool carried) {
   const float glow = std::max(0.0f, std::min(1.0f, glow_intensity));
   const float emissive = std::min(1.0f, FIREFLY_EMISSIVE_INTENSITY +
-                                           FIREFLY_NEAR_PULSE_INTENSITY * (glow - 0.64f));
-  const float size_scale = carried ? 0.78f : 0.92f;
+                                           FIREFLY_TWINKLE_EMISSIVE_BOOST * glow);
+  const float pulse_scale = 1.0f - FIREFLY_TWINKLE_SCALE_DEPTH + FIREFLY_TWINKLE_SCALE_DEPTH * glow;
+  const float size_scale = (carried ? 0.78f : 0.92f) * pulse_scale;
   const float core = FIREFLY_CORE_SIZE * size_scale;
-  const float halo = FIREFLY_HALO_SIZE * (0.58f + glow * 0.12f) * size_scale;
+  const float halo = FIREFLY_HALO_SIZE * (0.44f + glow * 0.34f) * size_scale;
   const float wing = 0.16f * size_scale;
   const PackedColor core_color = pack_rgba(255,
                                            static_cast<std::uint8_t>(205 + 38 * glow),

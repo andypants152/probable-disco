@@ -32,21 +32,31 @@ constexpr float kOwlTalkSeconds = 3.6f;
 constexpr float kOwlFlySeconds = 2.6f;
 constexpr float kOwlSecondLineTime = 1.95f;
 constexpr float FIREFLY_BOB_HEIGHT = 0.52f;
-constexpr float FIREFLY_GLOW_MIN = 0.64f;
+constexpr float FIREFLY_GLOW_MIN = 0.28f;
 constexpr float FIREFLY_GLOW_MAX = 1.0f;
+constexpr float FIREFLY_TWINKLE_SPEED = 2.05f;
+constexpr float FIREFLY_TWINKLE_DEPTH = 0.96f;
+constexpr float FIREFLY_TWINKLE_FADE_SPEED = 0.36f;
+constexpr float FIREFLY_TWINKLE_FADE_FLOOR = 0.22f;
+constexpr float FIREFLY_LANTERN_SPREAD_XZ = 3.35f;
+constexpr float FIREFLY_LANTERN_SPREAD_Y = 0.95f;
+constexpr float FIREFLY_WANDER_XZ = 1.35f;
+constexpr float FIREFLY_WANDER_Y = 0.26f;
+constexpr float HELD_FIREFLY_ORBIT_RADIUS = 2.65f;
+constexpr float HELD_FIREFLY_ORBIT_HEIGHT = 3.05f;
+constexpr float HELD_FIREFLY_ORBIT_BACK_OFFSET = 0.72f;
+constexpr float HELD_FIREFLY_ORBIT_SPEED = 1.18f;
+constexpr float HELD_FIREFLY_WOBBLE_AMOUNT = 0.32f;
+constexpr float HELD_FIREFLY_TWINKLE_SPEED = 2.65f;
 constexpr float LANTERN_SPAWN_CLEAR_RADIUS = 8.0f;
 constexpr float LANTERN_LIGHT_RADIUS = 18.0f;
 constexpr float LANTERN_LIGHT_INTENSITY = 2.0f;
 constexpr float LANTERN_GROUND_GLOW_RADIUS = 9.0f;
 constexpr float LANTERN_LIGHT_PULSE_DURATION = 2.4f;
 constexpr float LANTERN_LIGHT_PULSE_RADIUS = 22.0f;
-constexpr float kGameplayLightCullPadding = kCameraDistance + 4.0f;
 constexpr float kFireflyLightRadius = 4.4f;
 constexpr float kCarriedFireflyLightRadius = 4.0f;
-constexpr float kUnlitLanternLightRadius = 7.0f;
-constexpr int kMaxSubmittedGameplayLights = 4;
-constexpr int kMaxUncollectedFireflyLights = 3;
-constexpr float kFireflyLightCullRadius = 11.0f;
+constexpr int kMaxLitLanternLights = 3;
 constexpr float kFireflyCollectRadius = 1.85f;
 constexpr float kFireflyDepositRadius = 3.15f;
 constexpr float kFireflyClusterRadius = LANTERN_SPAWN_CLEAR_RADIUS;
@@ -111,6 +121,23 @@ float smoothstep(float value) {
 
 float lerp(float a, float b, float t) {
   return a + (b - a) * t;
+}
+
+std::uint32_t hash_u32(std::uint32_t value) {
+  value ^= value >> 16;
+  value *= 0x7feb352du;
+  value ^= value >> 15;
+  value *= 0x846ca68bu;
+  value ^= value >> 16;
+  return value;
+}
+
+float unit_from_hash(std::uint32_t value) {
+  return static_cast<float>(hash_u32(value) & 0xffffu) / 65535.0f;
+}
+
+float signed_unit_from_hash(std::uint32_t value) {
+  return unit_from_hash(value) * 2.0f - 1.0f;
 }
 
 float clamped_axis(float value) {
@@ -274,12 +301,15 @@ void App::frame(Renderer& renderer, const CameraInput& input) {
   audio_update(input.delta_time);
   subtitles_update(input.delta_time);
   update_lantern_hud();
+  subtitles_set_fps(hud_fps_);
   frame_stats_.carried_fireflies = carried_fireflies_;
   frame_stats_.active_lantern_index = lantern_sequence_;
   frame_stats_.deposited_fireflies = lanterns_[active_lantern_index_].deposited_fireflies;
   frame_stats_.required_fireflies = lanterns_[active_lantern_index_].required_fireflies;
   frame_stats_.active_fireflies = active_firefly_count();
   frame_stats_.active_gameplay_lights = gameplay_light_count_;
+  frame_stats_.gameplay_light_limit = gameplay_light_limit_;
+  frame_stats_.fps = hud_fps_;
   frame_stats_.firefly_glow_intensity = FIREFLY_GLOW_MAX;
   frame_stats_.lantern_light_intensity = LANTERN_LIGHT_INTENSITY;
   frame_stats_.lantern_light_radius = LANTERN_LIGHT_RADIUS;
@@ -342,6 +372,7 @@ void App::frame(Renderer& renderer, const CameraInput& input) {
   }
   render_frame_commands_.subtitle = &subtitles_frame();
   render_frame_commands_.hud = &subtitles_hud_frame();
+  render_frame_commands_.fps = &subtitles_fps_frame();
   render_frame_commands_.commands.push_back({RenderCommandType::DrawStaticMesh});
   if (renderer.supports_separate_meshes()) {
     render_frame_commands_.commands.push_back({RenderCommandType::DrawDynamicMesh});
@@ -350,6 +381,10 @@ void App::frame(Renderer& renderer, const CameraInput& input) {
   renderer.render_frame(render_frame_commands_);
   frame_stats_.render_ns = elapsed_ns(render_start, Clock::now());
   frame_stats_.total_ns = elapsed_ns(frame_start, Clock::now());
+  frame_stats_.fps = frame_stats_.total_ns > 0
+      ? 1000000000.0f / static_cast<float>(frame_stats_.total_ns)
+      : 0.0f;
+  hud_fps_ = frame_stats_.fps;
 }
 
 void App::shutdown(Renderer& renderer) {
@@ -459,7 +494,7 @@ void App::rebuild_dynamic_mesh() {
     append_firefly_mesh(dynamic_mesh_, firefly.position, firefly.glow_intensity, false);
   }
   for (int i = 0; i < carried_fireflies_; ++i) {
-    append_firefly_mesh(dynamic_mesh_, carried_firefly_position(i), 1.0f, true);
+    append_firefly_mesh(dynamic_mesh_, carried_firefly_position(i), carried_firefly_glow_intensity(i), true);
   }
   const Vec3 perch = owl_perch_position(generator_);
   append_owl_perch_mesh(dynamic_mesh_, perch, kOwlDefaultHeading);
@@ -479,12 +514,11 @@ void App::init_lantern_loop() {
   carried_fireflies_ = 0;
   active_lantern_index_ = 0;
   lantern_sequence_ = 0;
+  firefly_orbit_timer_ = 0.0f;
   firefly_chime_cooldown_ = 1.0f;
   deposit_cooldown_ = 0.0f;
-  for (Lantern& lantern : lanterns_) {
-    lantern = {};
-    lantern.required_fireflies = 3;
-  }
+  lanterns_.clear();
+  lanterns_.reserve(32);
   for (Firefly& firefly : fireflies_) {
     firefly = {};
   }
@@ -496,9 +530,12 @@ void App::activate_lantern(int sequence) {
     sequence = 0;
   }
   lantern_sequence_ = sequence;
-  active_lantern_index_ = sequence % static_cast<int>(lanterns_.size());
   for (Lantern& lantern : lanterns_) {
     lantern.active = false;
+  }
+  active_lantern_index_ = sequence;
+  if (active_lantern_index_ >= static_cast<int>(lanterns_.size())) {
+    lanterns_.resize(static_cast<std::size_t>(active_lantern_index_ + 1));
   }
 
   Lantern& lantern = lanterns_[active_lantern_index_];
@@ -526,16 +563,27 @@ void App::spawn_fireflies_for_lantern(int index) {
     const Vec3 offset = kFireflyOffsets[static_cast<std::size_t>(i)];
     const float offset_distance = std::max(0.001f, horizontal_distance({}, offset));
     const float clamped_radius = std::min(offset_distance, kFireflyClusterRadius);
-    const Vec3 readable_offset = {offset.x / offset_distance * clamped_radius,
-                                  0.0f,
-                                  offset.z / offset_distance * clamped_radius};
+    const std::uint32_t seed = hash_u32(static_cast<std::uint32_t>(lantern_sequence_ * 97 + i * 131 + 17));
+    const float spread_jitter = 0.86f + unit_from_hash(seed ^ 0x15f3u) * 0.34f;
+    const float side_jitter = signed_unit_from_hash(seed ^ 0xa523u) * 1.75f;
+    const Vec3 tangent = {-offset.z / offset_distance, 0.0f, offset.x / offset_distance};
+    const Vec3 readable_offset = {
+        offset.x / offset_distance * clamped_radius * FIREFLY_LANTERN_SPREAD_XZ * spread_jitter +
+            tangent.x * side_jitter,
+        0.0f,
+        offset.z / offset_distance * clamped_radius * FIREFLY_LANTERN_SPREAD_XZ * spread_jitter +
+            tangent.z * side_jitter};
     const Vec3 anchor = {lantern.position.x + readable_offset.x, 0.0f, lantern.position.z + readable_offset.z};
-    firefly.home = terrain_position(generator_, anchor, kFireflyHeight + 0.14f * static_cast<float>(i % 3));
+    const float height_offset = kFireflyHeight +
+                                signed_unit_from_hash(seed ^ 0x79bdu) * FIREFLY_LANTERN_SPREAD_Y +
+                                0.20f * static_cast<float>(i % 3);
+    firefly.home = terrain_position(generator_, anchor, height_offset);
     firefly.position = firefly.home;
     firefly.velocity = {0.0f, 0.0f, 0.0f};
-    firefly.phase = 0.73f * static_cast<float>(i);
-    firefly.bob_timer = 1.31f * static_cast<float>(i);
-    firefly.glow_intensity = 0.75f;
+    firefly.phase = 6.28318530718f * unit_from_hash(seed ^ 0x349bu);
+    firefly.bob_timer = 6.28318530718f * unit_from_hash(seed ^ 0xc0deu);
+    firefly.twinkle_phase = 6.28318530718f * unit_from_hash(seed ^ 0x8f71u);
+    firefly.glow_intensity = FIREFLY_GLOW_MIN;
     firefly.collected = false;
     firefly.active = true;
   }
@@ -549,6 +597,49 @@ int App::active_firefly_count() const {
     }
   }
   return count;
+}
+
+void App::set_gameplay_light_limit(int limit) {
+  gameplay_light_limit_ = std::max(0, std::min(kMaxRendererGameplayLights, limit));
+}
+
+void App::dev_collect_active_fireflies() {
+  for (Firefly& firefly : fireflies_) {
+    if (!firefly.active || firefly.collected) {
+      continue;
+    }
+    firefly.collected = true;
+    firefly.active = false;
+    ++carried_fireflies_;
+  }
+}
+
+void App::dev_deposit_carried_fireflies() {
+  Lantern& lantern = lanterns_[active_lantern_index_];
+  if (lantern.lit) {
+    return;
+  }
+
+  const int needed_fireflies = std::max(0, lantern.required_fireflies - lantern.deposited_fireflies);
+  if (needed_fireflies <= 0) {
+    return;
+  }
+  if (carried_fireflies_ <= 0) {
+    carried_fireflies_ = needed_fireflies;
+  }
+  const int deposited_now = std::min(carried_fireflies_, needed_fireflies);
+  carried_fireflies_ -= deposited_now;
+  lantern.deposited_fireflies += deposited_now;
+  deposit_cooldown_ = kDepositInterval;
+
+  if (lantern.deposited_fireflies >= lantern.required_fireflies) {
+    lantern.lit = true;
+    lantern.active = false;
+    lantern.glow_intensity = 1.0f;
+    lantern.pulse_timer = kLanternLightPulseSeconds;
+    carried_fireflies_ = 0;
+    activate_lantern(lantern_sequence_ + 1);
+  }
 }
 
 void App::update_lantern_hud() {
@@ -582,23 +673,42 @@ Vec3 App::gameplay_objective_position() const {
 }
 
 Vec3 App::carried_firefly_position(int index) const {
-  const float angle = fox_heading_ + static_cast<float>(index) * 2.09439510239f;
-  const float radius = 1.0f + 0.18f * static_cast<float>(index % 2);
-  return fox_position_ + Vec3{
+  const float seed = static_cast<float>(index) * 2.173f + 0.61f;
+  const float angle = fox_heading_ +
+                      firefly_orbit_timer_ * HELD_FIREFLY_ORBIT_SPEED +
+                      static_cast<float>(index) * 2.09439510239f +
+                      std::sin(firefly_orbit_timer_ * 0.84f + seed) * 0.18f;
+  const float radius = HELD_FIREFLY_ORBIT_RADIUS +
+                       std::sin(firefly_orbit_timer_ * 1.37f + seed * 1.6f) * HELD_FIREFLY_WOBBLE_AMOUNT +
+                       0.16f * static_cast<float>(index % 2);
+  const Vec3 center = fox_position_ +
+                      local_to_world_offset(0.0f, -HELD_FIREFLY_ORBIT_BACK_OFFSET, fox_heading_) +
+                      Vec3{0.0f, HELD_FIREFLY_ORBIT_HEIGHT, 0.0f};
+  return center + Vec3{
     std::sin(angle) * radius,
-    1.35f + 0.18f * std::sin(static_cast<float>(index) * 1.7f),
+    0.30f * std::sin(firefly_orbit_timer_ * 1.12f + seed) +
+        0.18f * (static_cast<float>(index % 3) - 1.0f),
     std::cos(angle) * radius,
   };
 }
 
+float App::carried_firefly_glow_intensity(int index) const {
+  const float seed = static_cast<float>(index) * 2.173f + 0.61f;
+  const float pulse_t = smoothstep(std::sin(firefly_orbit_timer_ * HELD_FIREFLY_TWINKLE_SPEED + seed * 1.9f) *
+                                   0.5f + 0.5f);
+  const float slow_fade = lerp(0.58f,
+                               1.0f,
+                               smoothstep(std::sin(firefly_orbit_timer_ * 0.48f + seed * 1.31f) *
+                                          0.5f + 0.5f));
+  return std::min(FIREFLY_GLOW_MAX,
+                  (0.36f + (FIREFLY_GLOW_MAX - 0.36f) * pulse_t) * slow_fade);
+}
+
 void App::add_gameplay_light(Vec3 position, Vec3 color, float radius, float intensity) {
-  if (gameplay_light_count_ >= kMaxSubmittedGameplayLights ||
+  if (gameplay_light_count_ >= gameplay_light_limit_ ||
       gameplay_light_count_ >= static_cast<int>(gameplay_lights_.size()) ||
       intensity <= 0.0f ||
       radius <= 0.0f) {
-    return;
-  }
-  if (horizontal_distance(fox_position_, position) > radius + kGameplayLightCullPadding) {
     return;
   }
   GameplayLight& light = gameplay_lights_[static_cast<std::size_t>(gameplay_light_count_++)];
@@ -619,44 +729,52 @@ void App::rebuild_gameplay_lights() {
   const Vec3 mote_color = {0.86f, 1.0f, 0.46f};
   const Vec3 lantern_color = {1.0f, 0.52f, 0.18f};
 
-  const Lantern& lantern = lanterns_[active_lantern_index_];
-  if (lantern.active && !lantern.lit) {
-    const Vec3 lantern_light_position = lantern.position + Vec3{0.0f, 1.85f, 0.0f};
-    add_gameplay_light(lantern_light_position,
-                       lantern_color,
-                       kUnlitLanternLightRadius,
-                       0.36f + lantern.glow_intensity * 0.70f);
-  }
-
   for (int i = 0; i < carried_fireflies_; ++i) {
+    const float glow = carried_firefly_glow_intensity(i);
     add_gameplay_light(carried_firefly_position(i),
                        mote_color,
                        kCarriedFireflyLightRadius,
-                       0.48f);
+                       0.24f + glow * 0.36f);
   }
 
-  int uncollected_firefly_lights = 0;
   for (const Firefly& firefly : fireflies_) {
     if (!firefly.active || firefly.collected) {
-      continue;
-    }
-    if (uncollected_firefly_lights >= kMaxUncollectedFireflyLights) {
-      break;
-    }
-    if (horizontal_distance(fox_position_, firefly.position) > kFireflyLightCullRadius) {
       continue;
     }
     add_gameplay_light(firefly.position,
                        firefly_color,
                        kFireflyLightRadius,
                        0.30f + firefly.glow_intensity * 0.44f);
-    ++uncollected_firefly_lights;
   }
 
-  for (const Lantern& lit_lantern : lanterns_) {
+  std::array<int, kMaxLitLanternLights> closest_lanterns = {};
+  std::array<float, kMaxLitLanternLights> closest_distances = {};
+  int closest_lantern_count = 0;
+  for (std::size_t i = 0; i < lanterns_.size(); ++i) {
+    const Lantern& lit_lantern = lanterns_[i];
     if (!lit_lantern.lit) {
       continue;
     }
+    const float distance = horizontal_distance(fox_position_, lit_lantern.position);
+    int insert_at = closest_lantern_count;
+    while (insert_at > 0 && distance < closest_distances[static_cast<std::size_t>(insert_at - 1)]) {
+      if (insert_at < kMaxLitLanternLights) {
+        closest_lanterns[static_cast<std::size_t>(insert_at)] =
+            closest_lanterns[static_cast<std::size_t>(insert_at - 1)];
+        closest_distances[static_cast<std::size_t>(insert_at)] =
+            closest_distances[static_cast<std::size_t>(insert_at - 1)];
+      }
+      --insert_at;
+    }
+    if (insert_at < kMaxLitLanternLights) {
+      closest_lanterns[static_cast<std::size_t>(insert_at)] = static_cast<int>(i);
+      closest_distances[static_cast<std::size_t>(insert_at)] = distance;
+      closest_lantern_count = std::min(closest_lantern_count + 1, kMaxLitLanternLights);
+    }
+  }
+
+  for (int i = 0; i < closest_lantern_count; ++i) {
+    const Lantern& lit_lantern = lanterns_[static_cast<std::size_t>(closest_lanterns[static_cast<std::size_t>(i)])];
     const Vec3 lantern_light_position = lit_lantern.position + Vec3{0.0f, 1.85f, 0.0f};
     const float pulse_t = lit_lantern.pulse_timer > 0.0f
         ? 1.0f - lit_lantern.pulse_timer / LANTERN_LIGHT_PULSE_DURATION
@@ -676,6 +794,7 @@ void App::rebuild_gameplay_lights() {
 bool App::update_fireflies(float dt) {
   bool changed = false;
   dt = std::max(0.0f, std::min(dt, 0.10f));
+  firefly_orbit_timer_ += dt;
   firefly_chime_cooldown_ = std::max(0.0f, firefly_chime_cooldown_ - dt);
   deposit_cooldown_ = std::max(0.0f, deposit_cooldown_ - dt);
 
@@ -728,21 +847,36 @@ bool App::update_fireflies(float dt) {
       continue;
     }
 
-    firefly.phase += dt * (0.65f + 0.12f * std::sin(firefly.phase));
+    firefly.phase += dt * (0.42f + 0.10f * std::sin(firefly.phase + firefly.twinkle_phase));
     firefly.bob_timer += dt;
-    const float drift_x = std::sin(firefly.phase * 1.37f) * 0.72f +
-                          std::cos(firefly.phase * 0.71f) * 0.34f;
-    const float drift_z = std::cos(firefly.phase * 1.19f) * 0.72f +
-                          std::sin(firefly.phase * 0.83f) * 0.34f;
-    const float bob = std::sin(firefly.bob_timer * 2.4f) * FIREFLY_BOB_HEIGHT;
+    const float drift_x = (std::sin(firefly.phase * 1.17f + firefly.twinkle_phase) * 0.72f +
+                           std::cos(firefly.phase * 0.61f + firefly.twinkle_phase * 1.7f) * 0.34f) *
+                          FIREFLY_WANDER_XZ;
+    const float drift_z = (std::cos(firefly.phase * 1.03f + firefly.twinkle_phase * 0.8f) * 0.72f +
+                           std::sin(firefly.phase * 0.73f + firefly.twinkle_phase * 1.3f) * 0.34f) *
+                          FIREFLY_WANDER_XZ;
+    const float bob = std::sin(firefly.bob_timer * 1.85f + firefly.twinkle_phase) *
+                      (FIREFLY_BOB_HEIGHT + FIREFLY_WANDER_Y);
     firefly.position = firefly.home + Vec3{drift_x, bob, drift_z};
     const float distance = horizontal_distance(fox_position_, firefly.position);
     const float proximity_boost = distance <= 4.8f ? 0.22f : 0.0f;
     const float pulse_speed = distance <= kFireflyCollectRadius + 1.0f ? 7.2f : 3.8f;
-    const float pulse_t = std::sin(firefly.bob_timer * pulse_speed) * 0.5f + 0.5f;
+    const float twinkle_speed = FIREFLY_TWINKLE_SPEED + 0.17f * std::sin(firefly.twinkle_phase * 1.9f);
+    const float pulse_t = smoothstep(std::sin(firefly.bob_timer * twinkle_speed + firefly.twinkle_phase) *
+                                     0.5f + 0.5f);
+    const float shimmer_t = smoothstep(std::sin(firefly.bob_timer * pulse_speed + firefly.twinkle_phase * 2.1f) *
+                                       0.5f + 0.5f);
+    const float slow_fade = lerp(FIREFLY_TWINKLE_FADE_FLOOR,
+                                 1.0f,
+                                 smoothstep(std::sin(firefly.bob_timer * FIREFLY_TWINKLE_FADE_SPEED +
+                                                     firefly.twinkle_phase * 1.37f) *
+                                            0.5f + 0.5f));
+    const float twinkle = std::min(1.0f, pulse_t * 0.76f + shimmer_t * 0.24f);
     firefly.glow_intensity = std::min(FIREFLY_GLOW_MAX,
-                                      FIREFLY_GLOW_MIN +
-                                          (FIREFLY_GLOW_MAX - FIREFLY_GLOW_MIN) * pulse_t +
+                                      (FIREFLY_GLOW_MIN +
+                                       (FIREFLY_GLOW_MAX - FIREFLY_GLOW_MIN) *
+                                           twinkle * FIREFLY_TWINKLE_DEPTH) *
+                                          slow_fade +
                                           proximity_boost);
     changed = true;
 
@@ -769,8 +903,10 @@ bool App::update_fireflies(float dt) {
       !lantern.lit &&
       deposit_cooldown_ <= 0.0f &&
       horizontal_distance(fox_position_, lantern.position) <= kFireflyDepositRadius) {
-    --carried_fireflies_;
-    ++lantern.deposited_fireflies;
+    const int needed_fireflies = std::max(0, lantern.required_fireflies - lantern.deposited_fireflies);
+    const int deposited_now = std::min(carried_fireflies_, needed_fireflies);
+    carried_fireflies_ -= deposited_now;
+    lantern.deposited_fireflies += deposited_now;
     deposit_cooldown_ = kDepositInterval;
     changed = true;
     if (audio_ready_for_gameplay_sound()) {
@@ -782,6 +918,7 @@ bool App::update_fireflies(float dt) {
       lantern.active = false;
       lantern.glow_intensity = 1.0f;
       lantern.pulse_timer = kLanternLightPulseSeconds;
+      carried_fireflies_ = 0;
       if (audio_ready_for_gameplay_sound()) {
         audio_play_owl_appear();
         audio_play_mote_chime(1.0f);

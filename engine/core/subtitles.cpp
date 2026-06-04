@@ -18,23 +18,25 @@ struct SubtitleState {
   bool initialized = false;
   CachedTextFrame subtitle;
   CachedTextFrame hud;
+  CachedTextFrame fps;
   float remaining_seconds = 0.0f;
   float total_seconds = 0.0f;
 };
 
 SubtitleState g_subtitles;
 
-void sync_frame(CachedTextFrame& cache, bool visible, bool compact) {
+void sync_frame(CachedTextFrame& cache, bool visible, bool compact, SubtitlePlacement placement) {
   cache.frame.text = cache.text.c_str();
   cache.frame.alpha = 1.0f;
   cache.frame.visible = visible && !cache.text.empty();
   cache.frame.compact = compact;
+  cache.frame.placement = placement;
   ++cache.frame.generation;
 }
 
 void clear_frame(CachedTextFrame& cache) {
   cache.text.clear();
-  sync_frame(cache, false, cache.frame.compact);
+  sync_frame(cache, false, cache.frame.compact, cache.frame.placement);
 }
 
 }  // namespace
@@ -44,6 +46,9 @@ bool subtitles_init() {
     return true;
   }
   g_subtitles.initialized = true;
+  g_subtitles.subtitle.frame.placement = SubtitlePlacement::BottomCenter;
+  g_subtitles.hud.frame.placement = SubtitlePlacement::TopCenter;
+  g_subtitles.fps.frame.placement = SubtitlePlacement::TopRight;
   return true;
 }
 
@@ -57,7 +62,7 @@ void subtitles_show(const char* text, float seconds) {
   }
 
   g_subtitles.subtitle.text = text;
-  sync_frame(g_subtitles.subtitle, true, false);
+  sync_frame(g_subtitles.subtitle, true, false, SubtitlePlacement::BottomCenter);
   g_subtitles.total_seconds = std::max(0.1f, seconds);
   g_subtitles.remaining_seconds = g_subtitles.total_seconds;
 }
@@ -99,7 +104,8 @@ void subtitles_set_fps(float fps) {
 
   char text[32] = {};
   std::snprintf(text, sizeof(text), "FPS %.1f", static_cast<double>(fps));
-  subtitles_set_hud_text(text);
+  g_subtitles.fps.text = text;
+  sync_frame(g_subtitles.fps, true, true, SubtitlePlacement::TopRight);
 }
 
 void subtitles_set_hud_text(const char* text) {
@@ -113,7 +119,7 @@ void subtitles_set_hud_text(const char* text) {
   }
 
   g_subtitles.hud.text = text;
-  sync_frame(g_subtitles.hud, true, true);
+  sync_frame(g_subtitles.hud, true, true, SubtitlePlacement::TopCenter);
 }
 
 const SubtitleFrame& subtitles_frame() {
@@ -122,6 +128,10 @@ const SubtitleFrame& subtitles_frame() {
 
 const SubtitleFrame& subtitles_hud_frame() {
   return g_subtitles.hud.frame;
+}
+
+const SubtitleFrame& subtitles_fps_frame() {
+  return g_subtitles.fps.frame;
 }
 
 }  // namespace voxel

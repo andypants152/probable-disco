@@ -98,8 +98,9 @@ The underlying Makefile output remains in `build/switch/`. The normal Switch bui
 Switch controls:
 
 - Left stick or D-pad: move the fox
-- Right stick or shoulder buttons: orbit the third-person camera
+- Right stick: orbit the third-person camera
 - `+`: exit
+- Dev controls: tap `L`/`R` to lower/raise the gameplay light cap, `ZL` to collect the active lantern's fireflies, `ZR` to force-deposit and advance the lantern
 
 To build with debug/profile compiler flags:
 

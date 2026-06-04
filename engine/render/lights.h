@@ -13,6 +13,6 @@ struct GameplayLight {
 };
 
 constexpr int kMaxGameplayLights = 32;
-constexpr int kMaxRendererGameplayLights = 8;
+constexpr int kMaxRendererGameplayLights = 12;
 
 }  // namespace voxel

@@ -26,12 +26,14 @@ struct RenderFrame {
   int light_count = 0;
   const SubtitleFrame* subtitle = nullptr;
   const SubtitleFrame* hud = nullptr;
+  const SubtitleFrame* fps = nullptr;
   std::vector<RenderCommand> commands;
 
   void clear() {
     light_count = 0;
     subtitle = nullptr;
     hud = nullptr;
+    fps = nullptr;
     commands.clear();
   }
 };

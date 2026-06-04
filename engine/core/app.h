@@ -38,6 +38,8 @@ class App {
     int required_fireflies = 0;
     int active_fireflies = 0;
     int active_gameplay_lights = 0;
+    int gameplay_light_limit = 0;
+    float fps = 0.0f;
     float firefly_glow_intensity = 0.0f;
     float lantern_light_intensity = 0.0f;
     float lantern_light_radius = 0.0f;
@@ -49,6 +51,10 @@ class App {
   };
 
   const FrameStats& frame_stats() const { return frame_stats_; }
+  int gameplay_light_limit() const { return gameplay_light_limit_; }
+  void set_gameplay_light_limit(int limit);
+  void dev_collect_active_fireflies();
+  void dev_deposit_carried_fireflies();
 
  private:
   void rebuild_world_mesh();
@@ -63,13 +69,13 @@ class App {
   void spawn_fireflies_for_lantern(int index);
   Vec3 gameplay_objective_position() const;
   Vec3 carried_firefly_position(int index) const;
+  float carried_firefly_glow_intensity(int index) const;
   void rebuild_gameplay_lights();
   void add_gameplay_light(Vec3 position, Vec3 color, float radius, float intensity);
   int active_firefly_count() const;
   void update_lantern_hud();
   void update_camera(const CameraInput& input);
 
-  static constexpr int kMaxLanterns = 4;
   static constexpr int kMaxFireflies = 12;
 
   struct Firefly {
@@ -78,6 +84,7 @@ class App {
     Vec3 velocity = {};
     float phase = 0.0f;
     float bob_timer = 0.0f;
+    float twinkle_phase = 0.0f;
     float glow_intensity = 1.0f;
     bool collected = false;
     bool active = false;
@@ -123,15 +130,18 @@ class App {
   float owl_timer_ = 0.0f;
   int owl_dialogue_line_ = 0;
   bool owl_prompt_visible_ = false;
-  std::array<Lantern, kMaxLanterns> lanterns_ = {};
+  std::vector<Lantern> lanterns_;
   std::array<Firefly, kMaxFireflies> fireflies_ = {};
   int active_lantern_index_ = 0;
   int lantern_sequence_ = 0;
   int carried_fireflies_ = 0;
+  float firefly_orbit_timer_ = 0.0f;
   float firefly_chime_cooldown_ = 1.0f;
   float deposit_cooldown_ = 0.0f;
   std::array<GameplayLight, kMaxGameplayLights> gameplay_lights_ = {};
   int gameplay_light_count_ = 0;
+  int gameplay_light_limit_ = kMaxRendererGameplayLights;
+  float hud_fps_ = 0.0f;
   RenderFrame render_frame_commands_;
   int world_center_chunk_x_ = 0;
   int world_center_chunk_z_ = 0;

@@ -54,19 +54,6 @@ void update_input(voxel::CameraInput& input, const PadState& pad) {
 
   input.look_x = right_x;
   input.look_y = -right_y;
-
-  if ((held & HidNpadButton_L) != 0) {
-    input.look_delta_x -= 4.0f;
-  }
-  if ((held & HidNpadButton_R) != 0) {
-    input.look_delta_x += 4.0f;
-  }
-  if ((held & HidNpadButton_ZL) != 0) {
-    input.look_delta_y -= 4.0f;
-  }
-  if ((held & HidNpadButton_ZR) != 0) {
-    input.look_delta_y += 4.0f;
-  }
 }
 
 #if defined(VOXEL_SWITCH_TIMING)
@@ -90,6 +77,25 @@ double ns_to_ms(u64 ns) {
   return static_cast<double>(ns) / 1000000.0;
 }
 #endif
+
+void handle_dev_buttons(voxel::App& app, u64 down) {
+  if ((down & HidNpadButton_L) != 0) {
+    app.set_gameplay_light_limit(app.gameplay_light_limit() - 1);
+    std::printf("dev light limit %d\n", app.gameplay_light_limit());
+  }
+  if ((down & HidNpadButton_R) != 0) {
+    app.set_gameplay_light_limit(app.gameplay_light_limit() + 1);
+    std::printf("dev light limit %d\n", app.gameplay_light_limit());
+  }
+  if ((down & HidNpadButton_ZL) != 0) {
+    app.dev_collect_active_fireflies();
+    std::printf("dev collected active fireflies\n");
+  }
+  if ((down & HidNpadButton_ZR) != 0) {
+    app.dev_deposit_carried_fireflies();
+    std::printf("dev deposited carried fireflies\n");
+  }
+}
 
 }  // namespace
 
@@ -119,6 +125,7 @@ int main(int, char**) {
     if ((down & HidNpadButton_Plus) != 0) {
       break;
     }
+    handle_dev_buttons(app, down);
     voxel::CameraInput input;
     update_input(input, pad);
     input.interact = (down & HidNpadButton_A) != 0;
@@ -129,8 +136,9 @@ int main(int, char**) {
     if ((++profile_frame % 60) == 0) {
       const auto& app_stats = app.frame_stats();
       const auto& stats = renderer.frame_stats();
-      std::printf("frame %.2fms update %.2fms rebuild world %.2fms fox %.2fms scene %.2fms upload %.2fms render %.2fms\n",
+      std::printf("frame %.2fms fps %.1f update %.2fms rebuild world %.2fms fox %.2fms scene %.2fms upload %.2fms render %.2fms\n",
                   ns_to_ms(app_stats.total_ns),
+                  static_cast<double>(app_stats.fps),
                   ns_to_ms(app_stats.update_ns),
                   ns_to_ms(app_stats.world_rebuild_ns),
                   ns_to_ms(app_stats.fox_rebuild_ns),
@@ -148,13 +156,14 @@ int main(int, char**) {
                   ns_to_ms(stats.static_upload_ns),
                   ns_to_ms(stats.dynamic_upload_ns));
       std::printf("verts %zu tris %zu\n", stats.vertices, stats.triangles);
-      std::printf("loop carried %d lantern %d deposit %d/%d fireflies %d lights %d objective %.2f glow %.2f lantern %.2f radius %.2f\n",
+      std::printf("loop carried %d lantern %d deposit %d/%d fireflies %d lights %d/%d objective %.2f glow %.2f lantern %.2f radius %.2f\n",
                   app_stats.carried_fireflies,
                   app_stats.active_lantern_index,
                   app_stats.deposited_fireflies,
                   app_stats.required_fireflies,
                   app_stats.active_fireflies,
                   app_stats.active_gameplay_lights,
+                  app_stats.gameplay_light_limit,
                   app_stats.distance_to_objective,
                   app_stats.firefly_glow_intensity,
                   app_stats.lantern_light_intensity,

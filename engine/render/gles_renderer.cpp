@@ -50,8 +50,8 @@ in vec3 v_micro_position;
 in float v_depth;
 
 uniform int u_light_count;
-uniform vec4 u_light_position_radius[8];
-uniform vec4 u_light_color_intensity[8];
+uniform vec4 u_light_position_radius[12];
+uniform vec4 u_light_color_intensity[12];
 
 out vec4 frag_color;
 
@@ -78,7 +78,7 @@ void main() {
   float glow = max(dot(normal, glow_dir), 0.0);
   vec3 light = mix(moon_ground, moon_sky, hemi) * 0.38 + glow_color * glow * 0.24 + vec3(0.035, 0.045, 0.040);
   vec3 local_light = vec3(0.0);
-  for (int i = 0; i < 8; ++i) {
+  for (int i = 0; i < 12; ++i) {
     if (i >= u_light_count) {
       break;
     }
@@ -306,6 +306,11 @@ void GlesRenderer::render_frame(const RenderFrame& frame) {
         }
         if (frame.hud != nullptr) {
           build_subtitle_batch(overlay_batch_, font_atlas_, *frame.hud, width, height);
+          upload_overlay_batch(overlay_batch_);
+          draw_overlay_batch(width, height);
+        }
+        if (frame.fps != nullptr) {
+          build_subtitle_batch(overlay_batch_, font_atlas_, *frame.fps, width, height);
           upload_overlay_batch(overlay_batch_);
           draw_overlay_batch(width, height);
         }

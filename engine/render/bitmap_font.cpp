@@ -239,10 +239,14 @@ void build_subtitle_batch(QuadBatch& batch,
 
   const float panel_width = metrics.width + pad_x * 2.0f;
   const float panel_height = metrics.height + pad_y * 2.0f;
-  const float x = (static_cast<float>(framebuffer_width) - panel_width) * 0.5f;
-  const float y = subtitle.compact
-      ? 20.0f
-      : static_cast<float>(framebuffer_height) - panel_height - std::max(34.0f, framebuffer_min * 0.055f);
+  const float compact_margin = 20.0f;
+  float x = (static_cast<float>(framebuffer_width) - panel_width) * 0.5f;
+  if (subtitle.placement == SubtitlePlacement::TopRight) {
+    x = static_cast<float>(framebuffer_width) - panel_width - compact_margin;
+  }
+  const float y = subtitle.placement == SubtitlePlacement::BottomCenter
+      ? static_cast<float>(framebuffer_height) - panel_height - std::max(34.0f, framebuffer_min * 0.055f)
+      : compact_margin;
 
   const std::uint8_t alpha = static_cast<std::uint8_t>(std::clamp(subtitle.alpha, 0.0f, 1.0f) * 255.0f);
   float solid_u0 = 0.0f;
