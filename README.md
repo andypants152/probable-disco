@@ -27,13 +27,13 @@ The active renderer path is SDL/OpenGL ES-style platform glue plus shared C++ re
 Install and activate Emscripten, then build:
 
 ```sh
-npm run build:web
+make web
 ```
 
 Serve the generated files:
 
 ```sh
-npm run serve:web
+emrun --no_browser --port 8080 dist/web
 ```
 
 Open `http://localhost:8080`. The deployable static output is written to `dist/web/`:
@@ -80,14 +80,10 @@ Install devkitPro with devkitA64 and libnx, then make sure `DEVKITPRO` is set:
 
 ```sh
 export DEVKITPRO=/opt/devkitpro
-make -f Makefile.switch
+make switch
 ```
 
-The npm script packages the Switch artifacts in `dist/switch/`:
-
-```sh
-npm run build:switch
-```
+The root `switch` target packages the Switch artifacts in `dist/switch/`:
 
 ```text
 dist/switch/probable-disco.nro

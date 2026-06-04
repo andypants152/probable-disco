@@ -32,29 +32,29 @@ constexpr float kOwlFlyAwayHeading = 0.0f;
 constexpr float kOwlTalkSeconds = 3.6f;
 constexpr float kOwlFlySeconds = 2.6f;
 constexpr float kOwlSecondLineTime = 1.95f;
-constexpr float FIREFLY_BOB_HEIGHT = 0.52f;
-constexpr float FIREFLY_GLOW_MIN = 0.28f;
-constexpr float FIREFLY_GLOW_MAX = 1.0f;
-constexpr float FIREFLY_TWINKLE_SPEED = 2.05f;
-constexpr float FIREFLY_TWINKLE_DEPTH = 0.96f;
-constexpr float FIREFLY_TWINKLE_FADE_SPEED = 0.36f;
-constexpr float FIREFLY_TWINKLE_FADE_FLOOR = 0.22f;
-constexpr float FIREFLY_LANTERN_SPREAD_XZ = 3.35f;
-constexpr float FIREFLY_LANTERN_SPREAD_Y = 0.95f;
-constexpr float FIREFLY_WANDER_XZ = 1.35f;
-constexpr float FIREFLY_WANDER_Y = 0.26f;
-constexpr float HELD_FIREFLY_ORBIT_RADIUS = 2.65f;
-constexpr float HELD_FIREFLY_ORBIT_HEIGHT = 3.05f;
-constexpr float HELD_FIREFLY_ORBIT_BACK_OFFSET = 0.72f;
-constexpr float HELD_FIREFLY_ORBIT_SPEED = 1.18f;
-constexpr float HELD_FIREFLY_WOBBLE_AMOUNT = 0.32f;
-constexpr float HELD_FIREFLY_TWINKLE_SPEED = 2.65f;
-constexpr float LANTERN_SPAWN_CLEAR_RADIUS = 8.0f;
-constexpr float LANTERN_LIGHT_RADIUS = 18.0f;
-constexpr float LANTERN_LIGHT_INTENSITY = 2.0f;
-constexpr float LANTERN_GROUND_GLOW_RADIUS = 9.0f;
-constexpr float LANTERN_LIGHT_PULSE_DURATION = 2.4f;
-constexpr float LANTERN_LIGHT_PULSE_RADIUS = 22.0f;
+constexpr float kFireflyBobHeight = 0.52f;
+constexpr float kFireflyGlowMin = 0.28f;
+constexpr float kFireflyGlowMax = 1.0f;
+constexpr float kFireflyTwinkleSpeed = 2.05f;
+constexpr float kFireflyTwinkleDepth = 0.96f;
+constexpr float kFireflyTwinkleFadeSpeed = 0.36f;
+constexpr float kFireflyTwinkleFadeFloor = 0.22f;
+constexpr float kFireflyLanternSpreadXz = 3.35f;
+constexpr float kFireflyLanternSpreadY = 0.95f;
+constexpr float kFireflyWanderXz = 1.35f;
+constexpr float kFireflyWanderY = 0.26f;
+constexpr float kHeldFireflyOrbitRadius = 2.65f;
+constexpr float kHeldFireflyOrbitHeight = 3.05f;
+constexpr float kHeldFireflyOrbitBackOffset = 0.72f;
+constexpr float kHeldFireflyOrbitSpeed = 1.18f;
+constexpr float kHeldFireflyWobbleAmount = 0.32f;
+constexpr float kHeldFireflyTwinkleSpeed = 2.65f;
+constexpr float kLanternSpawnClearRadius = 8.0f;
+constexpr float kLanternLightRadius = 18.0f;
+constexpr float kLanternLightIntensity = 2.0f;
+constexpr float kLanternGroundGlowRadius = 9.0f;
+constexpr float kLanternLightPulseDuration = 2.4f;
+constexpr float kLanternLightPulseRadius = 22.0f;
 constexpr float kFireflyLightRadius = 4.4f;
 constexpr float kCarriedFireflyLightRadius = 4.0f;
 constexpr float kFireflyLightFullDistance = 18.0f;
@@ -64,10 +64,10 @@ constexpr float kLanternLightCullDistance = 52.0f;
 constexpr int kMaxLitLanternLights = 3;
 constexpr float kFireflyCollectRadius = 1.85f;
 constexpr float kFireflyDepositRadius = 3.15f;
-constexpr float kFireflyClusterRadius = LANTERN_SPAWN_CLEAR_RADIUS;
+constexpr float kFireflyClusterRadius = kLanternSpawnClearRadius;
 constexpr float kFireflyHeight = 2.65f;
 constexpr float kDepositInterval = 0.16f;
-constexpr float kLanternLightPulseSeconds = LANTERN_LIGHT_PULSE_DURATION;
+constexpr float kLanternLightPulseSeconds = kLanternLightPulseDuration;
 constexpr std::array<Vec3, 4> kStarterLanternAnchors = {{
     {7.0f, 0.0f, -14.0f},
     {30.0f, 0.0f, -38.0f},
@@ -325,9 +325,9 @@ void App::frame(Renderer& renderer, const CameraInput& input) {
   frame_stats_.active_gameplay_lights = gameplay_light_count_;
   frame_stats_.gameplay_light_limit = gameplay_light_limit_;
   frame_stats_.fps = hud_fps_;
-  frame_stats_.firefly_glow_intensity = FIREFLY_GLOW_MAX;
-  frame_stats_.lantern_light_intensity = LANTERN_LIGHT_INTENSITY;
-  frame_stats_.lantern_light_radius = LANTERN_LIGHT_RADIUS;
+  frame_stats_.firefly_glow_intensity = kFireflyGlowMax;
+  frame_stats_.lantern_light_intensity = kLanternLightIntensity;
+  frame_stats_.lantern_light_radius = kLanternLightRadius;
   frame_stats_.distance_to_objective = horizontal_distance(fox_position_, gameplay_objective_position());
   frame_stats_.update_ns = elapsed_ns(update_start, Clock::now());
   frame_stats_.fox_moved = fox_moved;
@@ -592,14 +592,14 @@ void App::spawn_fireflies_for_lantern(int index) {
     const float side_jitter = signed_unit_from_hash(seed ^ 0xa523u) * 1.75f;
     const Vec3 tangent = {-offset.z / offset_distance, 0.0f, offset.x / offset_distance};
     const Vec3 readable_offset = {
-        offset.x / offset_distance * clamped_radius * FIREFLY_LANTERN_SPREAD_XZ * spread_jitter +
+        offset.x / offset_distance * clamped_radius * kFireflyLanternSpreadXz * spread_jitter +
             tangent.x * side_jitter,
         0.0f,
-        offset.z / offset_distance * clamped_radius * FIREFLY_LANTERN_SPREAD_XZ * spread_jitter +
+        offset.z / offset_distance * clamped_radius * kFireflyLanternSpreadXz * spread_jitter +
             tangent.z * side_jitter};
     const Vec3 anchor = {lantern.position.x + readable_offset.x, 0.0f, lantern.position.z + readable_offset.z};
     const float height_offset = kFireflyHeight +
-                                signed_unit_from_hash(seed ^ 0x79bdu) * FIREFLY_LANTERN_SPREAD_Y +
+                                signed_unit_from_hash(seed ^ 0x79bdu) * kFireflyLanternSpreadY +
                                 0.20f * static_cast<float>(i % 3);
     firefly.home = terrain_position(generator_, anchor, height_offset);
     firefly.position = firefly.home;
@@ -607,7 +607,7 @@ void App::spawn_fireflies_for_lantern(int index) {
     firefly.phase = 6.28318530718f * unit_from_hash(seed ^ 0x349bu);
     firefly.bob_timer = 6.28318530718f * unit_from_hash(seed ^ 0xc0deu);
     firefly.twinkle_phase = 6.28318530718f * unit_from_hash(seed ^ 0x8f71u);
-    firefly.glow_intensity = FIREFLY_GLOW_MIN;
+    firefly.glow_intensity = kFireflyGlowMin;
     firefly.collected = false;
     firefly.active = true;
   }
@@ -699,15 +699,15 @@ Vec3 App::gameplay_objective_position() const {
 Vec3 App::carried_firefly_position(int index) const {
   const float seed = static_cast<float>(index) * 2.173f + 0.61f;
   const float angle = fox_heading_ +
-                      firefly_orbit_timer_ * HELD_FIREFLY_ORBIT_SPEED +
+                      firefly_orbit_timer_ * kHeldFireflyOrbitSpeed +
                       static_cast<float>(index) * 2.09439510239f +
                       std::sin(firefly_orbit_timer_ * 0.84f + seed) * 0.18f;
-  const float radius = HELD_FIREFLY_ORBIT_RADIUS +
-                       std::sin(firefly_orbit_timer_ * 1.37f + seed * 1.6f) * HELD_FIREFLY_WOBBLE_AMOUNT +
+  const float radius = kHeldFireflyOrbitRadius +
+                       std::sin(firefly_orbit_timer_ * 1.37f + seed * 1.6f) * kHeldFireflyWobbleAmount +
                        0.16f * static_cast<float>(index % 2);
   const Vec3 center = fox_position_ +
-                      local_to_world_offset(0.0f, -HELD_FIREFLY_ORBIT_BACK_OFFSET, fox_heading_) +
-                      Vec3{0.0f, HELD_FIREFLY_ORBIT_HEIGHT, 0.0f};
+                      local_to_world_offset(0.0f, -kHeldFireflyOrbitBackOffset, fox_heading_) +
+                      Vec3{0.0f, kHeldFireflyOrbitHeight, 0.0f};
   return center + Vec3{
     std::sin(angle) * radius,
     0.30f * std::sin(firefly_orbit_timer_ * 1.12f + seed) +
@@ -718,14 +718,14 @@ Vec3 App::carried_firefly_position(int index) const {
 
 float App::carried_firefly_glow_intensity(int index) const {
   const float seed = static_cast<float>(index) * 2.173f + 0.61f;
-  const float pulse_t = smoothstep(std::sin(firefly_orbit_timer_ * HELD_FIREFLY_TWINKLE_SPEED + seed * 1.9f) *
+  const float pulse_t = smoothstep(std::sin(firefly_orbit_timer_ * kHeldFireflyTwinkleSpeed + seed * 1.9f) *
                                    0.5f + 0.5f);
   const float slow_fade = lerp(0.58f,
                                1.0f,
                                smoothstep(std::sin(firefly_orbit_timer_ * 0.48f + seed * 1.31f) *
                                           0.5f + 0.5f));
-  return std::min(FIREFLY_GLOW_MAX,
-                  (0.36f + (FIREFLY_GLOW_MAX - 0.36f) * pulse_t) * slow_fade);
+  return std::min(kFireflyGlowMax,
+                  (0.36f + (kFireflyGlowMax - 0.36f) * pulse_t) * slow_fade);
 }
 
 void App::add_gameplay_light(Vec3 position, Vec3 color, float radius, float intensity) {
@@ -814,16 +814,16 @@ void App::rebuild_gameplay_lights() {
     }
     const Vec3 lantern_light_position = lit_lantern.position + Vec3{0.0f, 1.85f, 0.0f};
     const float pulse_t = lit_lantern.pulse_timer > 0.0f
-        ? 1.0f - lit_lantern.pulse_timer / LANTERN_LIGHT_PULSE_DURATION
+        ? 1.0f - lit_lantern.pulse_timer / kLanternLightPulseDuration
         : 1.0f;
     const float pulse = lit_lantern.pulse_timer > 0.0f ? (1.0f - pulse_t) * 0.8f : 0.0f;
     add_gameplay_light(lantern_light_position,
                        lantern_color,
-                       LANTERN_LIGHT_RADIUS + pulse * LANTERN_LIGHT_PULSE_RADIUS,
-                       (LANTERN_LIGHT_INTENSITY + pulse) * light_fade);
+                       kLanternLightRadius + pulse * kLanternLightPulseRadius,
+                       (kLanternLightIntensity + pulse) * light_fade);
     add_gameplay_light(lit_lantern.position + Vec3{0.0f, 0.26f, 0.0f},
                        lantern_color,
-                       LANTERN_GROUND_GLOW_RADIUS,
+                       kLanternGroundGlowRadius,
                        0.42f * light_fade);
   }
 }
@@ -888,31 +888,31 @@ bool App::update_fireflies(float dt) {
     firefly.bob_timer += dt;
     const float drift_x = (std::sin(firefly.phase * 1.17f + firefly.twinkle_phase) * 0.72f +
                            std::cos(firefly.phase * 0.61f + firefly.twinkle_phase * 1.7f) * 0.34f) *
-                          FIREFLY_WANDER_XZ;
+                          kFireflyWanderXz;
     const float drift_z = (std::cos(firefly.phase * 1.03f + firefly.twinkle_phase * 0.8f) * 0.72f +
                            std::sin(firefly.phase * 0.73f + firefly.twinkle_phase * 1.3f) * 0.34f) *
-                          FIREFLY_WANDER_XZ;
+                          kFireflyWanderXz;
     const float bob = std::sin(firefly.bob_timer * 1.85f + firefly.twinkle_phase) *
-                      (FIREFLY_BOB_HEIGHT + FIREFLY_WANDER_Y);
+                      (kFireflyBobHeight + kFireflyWanderY);
     firefly.position = firefly.home + Vec3{drift_x, bob, drift_z};
     const float distance = horizontal_distance(fox_position_, firefly.position);
     const float proximity_boost = distance <= 4.8f ? 0.22f : 0.0f;
     const float pulse_speed = distance <= kFireflyCollectRadius + 1.0f ? 7.2f : 3.8f;
-    const float twinkle_speed = FIREFLY_TWINKLE_SPEED + 0.17f * std::sin(firefly.twinkle_phase * 1.9f);
+    const float twinkle_speed = kFireflyTwinkleSpeed + 0.17f * std::sin(firefly.twinkle_phase * 1.9f);
     const float pulse_t = smoothstep(std::sin(firefly.bob_timer * twinkle_speed + firefly.twinkle_phase) *
                                      0.5f + 0.5f);
     const float shimmer_t = smoothstep(std::sin(firefly.bob_timer * pulse_speed + firefly.twinkle_phase * 2.1f) *
                                        0.5f + 0.5f);
-    const float slow_fade = lerp(FIREFLY_TWINKLE_FADE_FLOOR,
+    const float slow_fade = lerp(kFireflyTwinkleFadeFloor,
                                  1.0f,
-                                 smoothstep(std::sin(firefly.bob_timer * FIREFLY_TWINKLE_FADE_SPEED +
+                                 smoothstep(std::sin(firefly.bob_timer * kFireflyTwinkleFadeSpeed +
                                                      firefly.twinkle_phase * 1.37f) *
                                             0.5f + 0.5f));
     const float twinkle = std::min(1.0f, pulse_t * 0.76f + shimmer_t * 0.24f);
-    firefly.glow_intensity = std::min(FIREFLY_GLOW_MAX,
-                                      (FIREFLY_GLOW_MIN +
-                                       (FIREFLY_GLOW_MAX - FIREFLY_GLOW_MIN) *
-                                           twinkle * FIREFLY_TWINKLE_DEPTH) *
+    firefly.glow_intensity = std::min(kFireflyGlowMax,
+                                      (kFireflyGlowMin +
+                                       (kFireflyGlowMax - kFireflyGlowMin) *
+                                           twinkle * kFireflyTwinkleDepth) *
                                           slow_fade +
                                           proximity_boost);
     changed = true;

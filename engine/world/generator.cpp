@@ -1,8 +1,8 @@
-#include "world/generator.h"
+#include "generator.h"
 
 #include <algorithm>
 
-#include "world/art_scale.h"
+#include "art_scale.h"
 
 namespace voxel {
 

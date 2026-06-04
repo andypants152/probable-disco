@@ -17,10 +17,10 @@ endif
 override BUILD := $(abspath $(BUILD))
 export BUILD
 SOURCES := engine/core engine/world engine/game engine/render platform/switch
-INCLUDES := engine engine/core platform/switch
+INCLUDES := engine platform/switch
 APP_TITLE := Probable Disco Voxel Forest
 APP_AUTHOR := AndyPants
-APP_VERSION := 0.1.0
+APP_VERSION := 2.0.0
 
 ARCH := -march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -fPIE
 OPTFLAGS := -O3 -DNDEBUG -DVOXEL_SWITCH_TIMING

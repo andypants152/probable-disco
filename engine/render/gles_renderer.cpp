@@ -1,4 +1,4 @@
-#include "render/gles_renderer.h"
+#include "gles_renderer.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -6,7 +6,7 @@
 
 #include "math/mat4.h"
 #include "render/render_types.h"
-#include "subtitles.h"
+#include "core/subtitles.h"
 
 namespace voxel {
 

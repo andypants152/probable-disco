@@ -5,7 +5,7 @@
 
 #include <GLES3/gl3.h>
 
-#include "platform.h"
+#include "core/platform.h"
 #include "render/bitmap_font.h"
 
 namespace voxel {

@@ -1,4 +1,4 @@
-#include "render/bitmap_font.h"
+#include "bitmap_font.h"
 
 #include <algorithm>
 #include <cctype>

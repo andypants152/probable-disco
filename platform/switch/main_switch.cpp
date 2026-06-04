@@ -4,8 +4,8 @@
 #include <cmath>
 #include <cstdio>
 
-#include "app.h"
-#include "audio.h"
+#include "core/app.h"
+#include "core/audio.h"
 #include "switch_renderer.h"
 
 namespace {

@@ -1,4 +1,4 @@
-#include "game/fox.h"
+#include "fox.h"
 
 #include <array>
 #include <cmath>

@@ -3,8 +3,8 @@
 #include <cstdint>
 #include <vector>
 
+#include "core/subtitles.h"
 #include "render/quad_batch.h"
-#include "subtitles.h"
 
 namespace voxel {
 

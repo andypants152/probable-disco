@@ -14,20 +14,12 @@ concurrency:
   group: pages
   cancel-in-progress: false
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v6
-
-      - name: Setup Node
-        uses: actions/setup-node@v6
-        with:
-          node-version: 24
 
       - name: Setup Emscripten
         uses: mymindstorm/setup-emsdk@v16
@@ -36,7 +28,7 @@ jobs:
           actions-cache-folder: emsdk-cache
 
       - name: Build Web/WASM
-        run: npm run build:web
+        run: make web
 
       - name: Verify deploy files
         run: |

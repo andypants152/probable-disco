@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(probable_disco_voxel_forest LANGUAGES CXX)
+project(probable_disco LANGUAGES CXX)
 
 set(WEB_DIST_DIR "${CMAKE_CURRENT_SOURCE_DIR}/dist/web" CACHE PATH "Static Web/WASM output directory")
 
@@ -8,7 +8,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-add_library(voxel_core STATIC
+add_library(probable_disco_core STATIC
   engine/core/app.cpp
   engine/core/audio.cpp
   engine/core/forest_audio.cpp
@@ -23,30 +23,29 @@ add_library(voxel_core STATIC
   engine/game/fox.cpp
 )
 
-target_include_directories(voxel_core
+target_include_directories(probable_disco_core
   PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/engine
-    ${CMAKE_CURRENT_SOURCE_DIR}/engine/core
 )
 
-target_compile_features(voxel_core PUBLIC cxx_std_17)
+target_compile_features(probable_disco_core PUBLIC cxx_std_17)
 
 if(EMSCRIPTEN)
-  target_compile_options(voxel_core PUBLIC "SHELL:-s USE_SDL=2")
+  target_compile_options(probable_disco_core PUBLIC "SHELL:-s USE_SDL=2")
 
-  add_executable(voxel_forest_web
+  add_executable(probable_disco_web
     platform/web/main_web.cpp
     platform/web/web_renderer.cpp
   )
 
-  target_include_directories(voxel_forest_web
+  target_include_directories(probable_disco_web
     PRIVATE
       ${CMAKE_CURRENT_SOURCE_DIR}/platform/web
   )
 
-  target_link_libraries(voxel_forest_web PRIVATE voxel_core)
+  target_link_libraries(probable_disco_web PRIVATE probable_disco_core)
 
-  target_link_options(voxel_forest_web
+  target_link_options(probable_disco_web
     PRIVATE
       "SHELL:-s WASM=1"
       "SHELL:-s USE_WEBGL2=1"
@@ -58,14 +57,14 @@ if(EMSCRIPTEN)
       "SHELL:--shell-file ${CMAKE_CURRENT_SOURCE_DIR}/platform/web/shell.html"
   )
 
-  set_target_properties(voxel_forest_web PROPERTIES
+  set_target_properties(probable_disco_web PROPERTIES
     OUTPUT_NAME "index"
     RUNTIME_OUTPUT_DIRECTORY "${WEB_DIST_DIR}"
     SUFFIX ".html"
   )
 
   if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/assets")
-    add_custom_command(TARGET voxel_forest_web POST_BUILD
+    add_custom_command(TARGET probable_disco_web POST_BUILD
       COMMAND ${CMAKE_COMMAND} -E copy_directory
         "${CMAKE_CURRENT_SOURCE_DIR}/assets"
         "${WEB_DIST_DIR}/assets"

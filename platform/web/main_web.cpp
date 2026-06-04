@@ -6,8 +6,8 @@
 #include <emscripten/emscripten.h>
 #include <emscripten/html5.h>
 
-#include "app.h"
-#include "audio.h"
+#include "core/app.h"
+#include "core/audio.h"
 #include "web_renderer.h"
 
 namespace {

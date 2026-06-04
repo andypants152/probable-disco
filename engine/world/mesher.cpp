@@ -1,4 +1,4 @@
-#include "world/mesher.h"
+#include "mesher.h"
 
 #include <algorithm>
 #include <array>
@@ -6,8 +6,8 @@
 #include <cstdint>
 #include <vector>
 
-#include "world/art_scale.h"
-#include "world/generator.h"
+#include "art_scale.h"
+#include "generator.h"
 
 namespace voxel {
 

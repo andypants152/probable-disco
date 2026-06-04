@@ -1,4 +1,4 @@
-#include "render/quad_batch.h"
+#include "quad_batch.h"
 
 namespace voxel {
 
