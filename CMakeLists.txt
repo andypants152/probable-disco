@@ -19,8 +19,12 @@ add_library(probable_disco_core STATIC
   engine/world/chunk.cpp
   engine/world/generator.cpp
   engine/world/mesher.cpp
+  engine/world/terrain_streamer.cpp
   engine/game/camera.cpp
+  engine/game/firefly_loop.cpp
   engine/game/fox.cpp
+  engine/game/fox_controller.cpp
+  engine/game/owl_encounter.cpp
 )
 
 target_include_directories(probable_disco_core
