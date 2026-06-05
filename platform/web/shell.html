@@ -161,8 +161,6 @@
           leftPointerId: null,
           lookPointerId: null,
           actionPointerId: null,
-          lookLastX: 0,
-          lookLastY: 0,
         };
 
         function bridge(name, ...args) {
@@ -218,13 +216,14 @@
         }
 
         function updateLook(event) {
-          const dx = event.clientX - active.lookLastX;
-          const dy = event.clientY - active.lookLastY;
-          active.lookLastX = event.clientX;
-          active.lookLastY = event.clientY;
-          const x = clamp((dx / radius) * lookSensitivity, -1, 1);
-          const y = clamp((dy / radius) * lookSensitivity, -1, 1);
-          setThumb(lookThumb, x * radius * 0.42, y * radius * 0.42);
+          const offset = pointerOffset(event, lookArea);
+          const distance = Math.hypot(offset.x, offset.y);
+          const scale = distance > radius ? radius / distance : 1;
+          const thumbX = offset.x * scale;
+          const thumbY = offset.y * scale;
+          const x = clamp((thumbX / radius) * lookSensitivity, -1, 1);
+          const y = clamp((thumbY / radius) * lookSensitivity, -1, 1);
+          setThumb(lookThumb, thumbX, thumbY);
           bridge("game_set_touch_look", x, y);
         }
 
@@ -264,9 +263,8 @@
           }
           event.preventDefault();
           active.lookPointerId = event.pointerId;
-          active.lookLastX = event.clientX;
-          active.lookLastY = event.clientY;
           lookArea.setPointerCapture(event.pointerId);
+          updateLook(event);
         });
 
         lookArea.addEventListener("pointermove", (event) => {
