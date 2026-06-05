@@ -24,6 +24,7 @@ class FireflyLoop {
                               float fox_heading) const;
 
   Vec3 objective_position(Vec3 fox_position) const;
+  Vec3 farthest_firefly_position(Vec3 fox_position) const;
 
   int carried_fireflies() const { return carried_fireflies_; }
   int active_lantern_index() const { return lantern_sequence_; }
@@ -34,9 +35,13 @@ class FireflyLoop {
   float firefly_glow_intensity() const;
   float lantern_light_intensity() const;
   float lantern_light_radius() const;
+  bool blocks_acorn_spawn(Vec3 position, float radius) const;
+  bool has_lit_lantern_near(Vec3 position, float radius) const;
+  void lit_lantern_positions(std::vector<Vec3>& positions) const;
 
   void dev_collect_active_fireflies();
   void dev_deposit_carried_fireflies(const TerrainGenerator& generator);
+  void add_squirrel_completion_bonus(Vec3 position);
 
  private:
   static constexpr int kMaxFireflies = 12;
@@ -62,6 +67,7 @@ class FireflyLoop {
     float glow_intensity = 0.0f;
     float glow_timer = 0.0f;
     float pulse_timer = 0.0f;
+    int squirrel_bonus = 0;
   };
 
   void activate_lantern(const TerrainGenerator& generator, int sequence);

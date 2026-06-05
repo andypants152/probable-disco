@@ -2,12 +2,15 @@
 
 #include <array>
 #include <cstdint>
+#include <vector>
 
 #include "forest_audio.h"
 #include "game/camera.h"
+#include "game/conversation_controller.h"
 #include "game/firefly_loop.h"
 #include "game/fox_controller.h"
 #include "game/owl_encounter.h"
+#include "game/squirrel_quest.h"
 #include "platform.h"
 #include "render/mesh.h"
 #include "world/generator.h"
@@ -74,14 +77,19 @@ class App {
   Mesh mesh_;
   Camera camera_;
   FoxController fox_controller_;
+  ConversationController conversation_controller_;
   FireflyLoop firefly_loop_;
   OwlEncounter owl_encounter_;
+  SquirrelQuest squirrel_quest_;
+  std::vector<SquirrelQuest::DialogueEvent> squirrel_dialogue_events_;
+  std::vector<SquirrelQuest::CompletionEvent> squirrel_completion_events_;
   std::array<GameplayLight, kMaxGameplayLights> gameplay_lights_ = {};
   int gameplay_light_count_ = 0;
   int gameplay_light_limit_ = kMaxRendererGameplayLights;
   float hud_fps_ = 0.0f;
   RenderFrame render_frame_commands_;
   bool initialized_ = false;
+  bool previous_interact_down_ = false;
   FrameStats frame_stats_;
 };
 

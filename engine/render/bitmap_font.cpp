@@ -229,7 +229,8 @@ void build_subtitle_batch(QuadBatch& batch,
   const float framebuffer_min = static_cast<float>(std::min(framebuffer_width, framebuffer_height));
   const float glyph_scale = subtitle.compact ? std::max(2.0f, framebuffer_min / 390.0f)
                                              : std::max(3.0f, framebuffer_min / 230.0f);
-  const float max_text_width = static_cast<float>(framebuffer_width) * (subtitle.compact ? 0.32f : 0.78f);
+  const float compact_width = subtitle.placement == SubtitlePlacement::TopRight ? 0.32f : 0.68f;
+  const float max_text_width = static_cast<float>(framebuffer_width) * (subtitle.compact ? compact_width : 0.78f);
   const float pad_x = subtitle.compact ? 10.0f : 22.0f;
   const float pad_y = subtitle.compact ? 7.0f : 15.0f;
   const TextLayoutMetrics metrics = measure_bitmap_text(subtitle.text, glyph_scale, max_text_width);

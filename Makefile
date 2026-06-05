@@ -1,7 +1,7 @@
 .DEFAULT_GOAL := _usage
 
 CMAKE_BIN := $(or $(wildcard /usr/local/bin/cmake),$(wildcard /usr/bin/cmake),$(wildcard /snap/bin/cmake),cmake)
-EMCMAKE_BIN ?= emcmake
+EMCMAKE_BIN ?= $(or $(shell command -v emcmake 2>/dev/null),$(wildcard $(HOME)/emsdk/upstream/emscripten/emcmake),emcmake)
 
 .PHONY: _usage web switch
 

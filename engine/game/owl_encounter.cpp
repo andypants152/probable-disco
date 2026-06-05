@@ -14,7 +14,7 @@ namespace {
 constexpr float kOwlEncounterRadius = 18.0f;
 constexpr float kOwlDefaultHeading = 3.14159265358979323846f;
 constexpr float kOwlFlyAwayHeading = 0.0f;
-constexpr float kOwlTalkSeconds = 3.6f;
+constexpr float kOwlTalkSeconds = 5.35f;
 constexpr float kOwlFlySeconds = 2.6f;
 constexpr float kOwlSecondLineTime = 1.95f;
 
@@ -43,6 +43,7 @@ void OwlEncounter::init(const TerrainGenerator& generator) {
   wing_pose_ = 0.0f;
   timer_ = 0.0f;
   dialogue_line_ = 0;
+  pending_dialogue_line_ = 0;
   prompt_visible_ = false;
 }
 
@@ -70,7 +71,7 @@ bool OwlEncounter::update(float dt, const TerrainGenerator& generator, Vec3 fox_
       state_ = State::Talking;
       prompt_visible_ = false;
       dialogue_line_ = 1;
-      subtitles_show("Oh good, you're awake.", 2.35f);
+      pending_dialogue_line_ = 1;
     }
   } else if (state_ == State::Talking) {
     position_ = perch_position_;
@@ -79,7 +80,7 @@ bool OwlEncounter::update(float dt, const TerrainGenerator& generator, Vec3 fox_
     timer_ += dt;
     if (dialogue_line_ == 1 && timer_ >= kOwlSecondLineTime) {
       dialogue_line_ = 2;
-      subtitles_show("The little lights are scattered. Bring them home.", 3.35f);
+      pending_dialogue_line_ = 2;
     }
     if (timer_ >= kOwlTalkSeconds) {
       state_ = State::Flying;
@@ -103,6 +104,25 @@ bool OwlEncounter::update(float dt, const TerrainGenerator& generator, Vec3 fox_
       length(previous_position - position_) > 0.0005f ||
       std::fabs(previous_heading - heading_) > 0.0005f ||
       std::fabs(previous_wing_pose - wing_pose_) > 0.0005f;
+}
+
+bool OwlEncounter::consume_dialogue_event(DialogueEvent& event) {
+  if (pending_dialogue_line_ == 0) {
+    return false;
+  }
+
+  event = {};
+  event.line = pending_dialogue_line_;
+  event.target_position = position_;
+  if (pending_dialogue_line_ == 1) {
+    event.text = "Oh good, you're awake.";
+    event.seconds = kOwlSecondLineTime;
+  } else {
+    event.text = "The little lights are scattered. Bring them home.";
+    event.seconds = 3.35f;
+  }
+  pending_dialogue_line_ = 0;
+  return true;
 }
 
 float OwlEncounter::perch_heading() const {

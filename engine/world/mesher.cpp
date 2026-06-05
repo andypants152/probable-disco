@@ -1211,6 +1211,131 @@ void append_firefly_mesh(Mesh& mesh, Vec3 position, float glow_intensity, bool c
                     wing_color});
 }
 
+void append_squirrel_mesh(Mesh& mesh,
+                          Vec3 ground_center,
+                          float heading_radians,
+                          float tail_pose,
+                          float head_pose,
+                          float hop_pose,
+                          bool happy) {
+  const float hop = std::max(0.0f, std::min(1.0f, hop_pose)) * 0.18f;
+  const float tail = std::max(-1.0f, std::min(1.0f, tail_pose));
+  const float head = std::max(-1.0f, std::min(1.0f, head_pose));
+  const float y = hop;
+  const PackedColor fur = pack_rgba(154, 93, 48);
+  const PackedColor warm_fur = pack_rgba(183, 112, 58);
+  const PackedColor dark_fur = pack_rgba(95, 58, 39);
+  const PackedColor cream = pack_rgba(219, 180, 123);
+  const PackedColor black = pack_rgba(22, 19, 16);
+  (void)happy;
+
+  append_local_box(mesh, ground_center, heading_radians,
+                   {-0.36f, y + 0.16f, -0.42f},
+                   {0.36f, y + 0.78f, 0.34f},
+                   fur);
+  append_local_box(mesh, ground_center, heading_radians,
+                   {-0.22f, y + 0.22f, 0.24f},
+                   {0.22f, y + 0.67f, 0.40f},
+                   cream);
+  append_local_box(mesh, ground_center, heading_radians + head * 0.22f,
+                   {-0.29f, y + 0.70f, 0.08f},
+                   {0.29f, y + 1.13f, 0.54f},
+                   warm_fur);
+  append_local_box(mesh, ground_center, heading_radians + head * 0.22f,
+                   {-0.16f, y + 0.78f, 0.48f},
+                   {0.16f, y + 0.98f, 0.70f},
+                   cream);
+  append_local_box(mesh, ground_center, heading_radians + head * 0.22f,
+                   {-0.20f, y + 1.07f, 0.16f},
+                   {-0.02f, y + 1.34f, 0.34f},
+                   dark_fur);
+  append_local_box(mesh, ground_center, heading_radians + head * 0.22f,
+                   {0.02f, y + 1.07f, 0.16f},
+                   {0.20f, y + 1.34f, 0.34f},
+                   dark_fur);
+  append_local_box(mesh, ground_center, heading_radians + head * 0.22f,
+                   {-0.21f, y + 0.91f, 0.50f},
+                   {-0.09f, y + 1.03f, 0.60f},
+                   black);
+  append_local_box(mesh, ground_center, heading_radians + head * 0.22f,
+                   {0.09f, y + 0.91f, 0.50f},
+                   {0.21f, y + 1.03f, 0.60f},
+                   black);
+
+  append_local_box(mesh, ground_center, heading_radians,
+                   {-0.34f, y + 0.00f, -0.26f},
+                   {-0.10f, y + 0.22f, 0.10f},
+                   dark_fur);
+  append_local_box(mesh, ground_center, heading_radians,
+                   {0.10f, y + 0.00f, -0.26f},
+                   {0.34f, y + 0.22f, 0.10f},
+                   dark_fur);
+  append_local_box(mesh, ground_center, heading_radians,
+                   {-0.28f, y + 0.08f, 0.20f},
+                   {-0.08f, y + 0.36f, 0.44f},
+                   dark_fur);
+  append_local_box(mesh, ground_center, heading_radians,
+                   {0.08f, y + 0.08f, 0.20f},
+                   {0.28f, y + 0.36f, 0.44f},
+                   dark_fur);
+
+  append_local_box(mesh, ground_center, heading_radians + tail * 0.15f,
+                   {-0.28f, y + 0.42f, -0.92f},
+                   {0.28f, y + 1.28f, -0.40f},
+                   warm_fur);
+  append_local_box(mesh, ground_center, heading_radians + tail * 0.20f,
+                   {-0.22f, y + 1.10f, -1.12f},
+                   {0.22f, y + 1.70f, -0.70f},
+                   warm_fur);
+  append_local_box(mesh, ground_center, heading_radians + tail * 0.24f,
+                   {-0.18f, y + 1.46f, -0.94f},
+                   {0.18f, y + 1.86f, -0.54f},
+                   cream);
+
+}
+
+void append_heart_mesh(Mesh& mesh, Vec3 position, float scale, float pulse) {
+  const float s = scale * (0.86f + std::max(0.0f, std::min(1.0f, pulse)) * 0.14f);
+  const PackedColor deep = pack_rgba(174, 47, 63);
+  const PackedColor bright = pack_rgba(222, 75, 91);
+  const PackedColor highlight = pack_rgba(245, 130, 136);
+
+  append_box(mesh, {{position.x - 0.30f * s, position.y + 0.18f * s, position.z - 0.08f * s},
+                    {position.x - 0.04f * s, position.y + 0.44f * s, position.z + 0.08f * s},
+                    bright});
+  append_box(mesh, {{position.x + 0.04f * s, position.y + 0.18f * s, position.z - 0.08f * s},
+                    {position.x + 0.30f * s, position.y + 0.44f * s, position.z + 0.08f * s},
+                    bright});
+  append_box(mesh, {{position.x - 0.38f * s, position.y - 0.02f * s, position.z - 0.08f * s},
+                    {position.x + 0.38f * s, position.y + 0.24f * s, position.z + 0.08f * s},
+                    deep});
+  append_box(mesh, {{position.x - 0.25f * s, position.y - 0.25f * s, position.z - 0.08f * s},
+                    {position.x + 0.25f * s, position.y + 0.02f * s, position.z + 0.08f * s},
+                    deep});
+  append_box(mesh, {{position.x - 0.11f * s, position.y - 0.46f * s, position.z - 0.08f * s},
+                    {position.x + 0.11f * s, position.y - 0.20f * s, position.z + 0.08f * s},
+                    deep});
+  append_box(mesh, {{position.x - 0.22f * s, position.y + 0.24f * s, position.z - 0.10f * s},
+                    {position.x - 0.12f * s, position.y + 0.34f * s, position.z + 0.10f * s},
+                    highlight});
+}
+
+void append_acorn_mesh(Mesh& mesh, Vec3 position) {
+  const PackedColor shell = pack_rgba(151, 92, 43);
+  const PackedColor cap = pack_rgba(93, 65, 39, 255);
+  const PackedColor stem = pack_rgba(70, 50, 32, 255);
+
+  append_box(mesh, {{position.x - 0.16f, position.y + 0.05f, position.z - 0.16f},
+                    {position.x + 0.16f, position.y + 0.32f, position.z + 0.16f},
+                    shell});
+  append_box(mesh, {{position.x - 0.20f, position.y + 0.28f, position.z - 0.18f},
+                    {position.x + 0.20f, position.y + 0.44f, position.z + 0.18f},
+                    cap});
+  append_box(mesh, {{position.x - 0.04f, position.y + 0.42f, position.z - 0.04f},
+                    {position.x + 0.04f, position.y + 0.58f, position.z + 0.04f},
+                    stem});
+}
+
 void append_lantern_mesh(Mesh& mesh,
                          Vec3 position,
                          int deposited_fireflies,

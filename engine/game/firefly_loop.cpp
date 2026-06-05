@@ -36,6 +36,8 @@ constexpr float kLanternLightIntensity = 2.0f;
 constexpr float kLanternGroundGlowRadius = 9.0f;
 constexpr float kLanternLightPulseDuration = 2.4f;
 constexpr float kLanternLightPulseRadius = 22.0f;
+constexpr float kSquirrelLanternBonusRange = 54.0f;
+constexpr int kMaxSquirrelLanternBonus = 4;
 constexpr float kFireflyLightRadius = 4.4f;
 constexpr float kCarriedFireflyLightRadius = 4.0f;
 constexpr float kFireflyLightFullDistance = 18.0f;
@@ -291,6 +293,60 @@ float FireflyLoop::lantern_light_radius() const {
   return kLanternLightRadius;
 }
 
+bool FireflyLoop::blocks_acorn_spawn(Vec3 position, float radius) const {
+  for (const Lantern& lantern : lanterns_) {
+    if (!lantern.active && !lantern.lit && lantern.deposited_fireflies == 0) {
+      continue;
+    }
+    if (horizontal_distance(position, lantern.position) <= radius) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool FireflyLoop::has_lit_lantern_near(Vec3 position, float radius) const {
+  for (const Lantern& lantern : lanterns_) {
+    if (!lantern.lit) {
+      continue;
+    }
+    if (horizontal_distance(position, lantern.position) <= radius) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void FireflyLoop::lit_lantern_positions(std::vector<Vec3>& positions) const {
+  for (const Lantern& lantern : lanterns_) {
+    if (lantern.lit) {
+      positions.push_back(lantern.position);
+    }
+  }
+}
+
+void FireflyLoop::add_squirrel_completion_bonus(Vec3 position) {
+  float nearest_distance = kSquirrelLanternBonusRange;
+  Lantern* nearest_lantern = nullptr;
+  for (Lantern& lantern : lanterns_) {
+    if (!lantern.active && !lantern.lit) {
+      continue;
+    }
+    const float distance = horizontal_distance(position, lantern.position);
+    if (distance <= nearest_distance) {
+      nearest_distance = distance;
+      nearest_lantern = &lantern;
+    }
+  }
+
+  if (nearest_lantern == nullptr) {
+    return;
+  }
+
+  nearest_lantern->squirrel_bonus = std::min(kMaxSquirrelLanternBonus, nearest_lantern->squirrel_bonus + 1);
+  nearest_lantern->pulse_timer = std::max(nearest_lantern->pulse_timer, kLanternLightPulseSeconds * 0.55f);
+}
+
 void FireflyLoop::dev_collect_active_fireflies() {
   for (Firefly& firefly : fireflies_) {
     if (!firefly.active || firefly.collected) {
@@ -351,6 +407,22 @@ Vec3 FireflyLoop::objective_position(Vec3 fox_position) const {
   return nearest_position;
 }
 
+Vec3 FireflyLoop::farthest_firefly_position(Vec3 fox_position) const {
+  float farthest_distance = -1.0f;
+  Vec3 farthest_position = objective_position(fox_position);
+  for (const Firefly& firefly : fireflies_) {
+    if (!firefly.active || firefly.collected) {
+      continue;
+    }
+    const float distance = horizontal_distance(fox_position, firefly.position);
+    if (distance > farthest_distance) {
+      farthest_distance = distance;
+      farthest_position = firefly.position;
+    }
+  }
+  return farthest_position;
+}
+
 Vec3 FireflyLoop::carried_firefly_position(Vec3 fox_position, float fox_heading, int index) const {
   const float seed = static_cast<float>(index) * 2.173f + 0.61f;
   const float angle = fox_heading +
@@ -394,6 +466,17 @@ void FireflyLoop::append_dynamic_mesh(Mesh& mesh, Vec3 fox_position, float fox_h
                         lantern.required_fireflies,
                         lantern.lit,
                         lantern.glow_intensity);
+    for (int i = 0; i < lantern.squirrel_bonus; ++i) {
+      const float seed = static_cast<float>(i) * 2.17f + lantern.position.x * 0.037f + lantern.position.z * 0.021f;
+      const float angle = lantern.glow_timer * (0.42f + 0.05f * static_cast<float>(i)) + seed;
+      const float radius = 2.2f + 0.45f * static_cast<float>(i % 3);
+      const Vec3 position = lantern.position + Vec3{
+          std::sin(angle) * radius,
+          2.05f + std::sin(lantern.glow_timer * 1.2f + seed) * 0.38f,
+          std::cos(angle) * radius,
+      };
+      append_firefly_mesh(mesh, position, 0.62f + 0.24f * std::sin(lantern.glow_timer * 1.7f + seed), false);
+    }
   }
   for (const Firefly& firefly : fireflies_) {
     if (!firefly.active || firefly.collected) {
@@ -491,14 +574,32 @@ void FireflyLoop::append_gameplay_lights(std::array<GameplayLight, kMaxGameplayL
                        lantern_light_position,
                        lantern_color,
                        kLanternLightRadius + pulse * kLanternLightPulseRadius,
-                       (kLanternLightIntensity + pulse) * light_fade);
+                       (kLanternLightIntensity + pulse + 0.12f * static_cast<float>(lit_lantern.squirrel_bonus)) *
+                           light_fade);
     add_gameplay_light(lights,
                        light_count,
                        light_limit,
                        lit_lantern.position + Vec3{0.0f, 0.26f, 0.0f},
                        lantern_color,
                        kLanternGroundGlowRadius,
-                       0.42f * light_fade);
+                       (0.42f + 0.025f * static_cast<float>(lit_lantern.squirrel_bonus)) * light_fade);
+    for (int bonus = 0; bonus < lit_lantern.squirrel_bonus; ++bonus) {
+      const float seed = static_cast<float>(bonus) * 2.17f + lit_lantern.position.x * 0.037f +
+                         lit_lantern.position.z * 0.021f;
+      const float angle = lit_lantern.glow_timer * (0.42f + 0.05f * static_cast<float>(bonus)) + seed;
+      const Vec3 mote_position = lit_lantern.position + Vec3{
+          std::sin(angle) * (2.2f + 0.45f * static_cast<float>(bonus % 3)),
+          2.05f + std::sin(lit_lantern.glow_timer * 1.2f + seed) * 0.38f,
+          std::cos(angle) * (2.2f + 0.45f * static_cast<float>(bonus % 3)),
+      };
+      add_gameplay_light(lights,
+                         light_count,
+                         light_limit,
+                         mote_position,
+                         mote_color,
+                         kFireflyLightRadius * 0.78f,
+                         (0.22f + 0.04f * static_cast<float>(bonus)) * light_fade);
+    }
   }
 }
 
@@ -522,7 +623,7 @@ bool FireflyLoop::update(float dt, const TerrainGenerator& generator, Vec3 fox_p
     const float pulse = lit_lantern.pulse_timer > 0.0f
         ? std::sin((kLanternLightPulseSeconds - lit_lantern.pulse_timer) * 8.0f) * 0.18f + 0.18f
         : 0.0f;
-    lit_lantern.glow_intensity = std::min(1.0f, 0.82f + pulse);
+    lit_lantern.glow_intensity = std::min(1.0f, 0.82f + pulse + 0.025f * static_cast<float>(lit_lantern.squirrel_bonus));
     changed = changed || pulse_before != lit_lantern.pulse_timer;
   }
 
@@ -573,6 +674,10 @@ bool FireflyLoop::update(float dt, const TerrainGenerator& generator, Vec3 fox_p
     const float proximity_boost = distance <= 4.8f ? 0.22f : 0.0f;
     const float pulse_speed = distance <= kFireflyCollectRadius + 1.0f ? 7.2f : 3.8f;
     const float twinkle_speed = kFireflyTwinkleSpeed + 0.17f * std::sin(firefly.twinkle_phase * 1.9f);
+    const float active_bonus = lantern.squirrel_bonus > 0 &&
+                               horizontal_distance(firefly.home, lantern.position) <= kSquirrelLanternBonusRange
+        ? 0.22f * static_cast<float>(lantern.squirrel_bonus)
+        : 0.0f;
     const float pulse_t = smoothstep(std::sin(firefly.bob_timer * twinkle_speed + firefly.twinkle_phase) *
                                      0.5f + 0.5f);
     const float shimmer_t = smoothstep(std::sin(firefly.bob_timer * pulse_speed + firefly.twinkle_phase * 2.1f) *
@@ -588,7 +693,8 @@ bool FireflyLoop::update(float dt, const TerrainGenerator& generator, Vec3 fox_p
                                        (kFireflyGlowMax - kFireflyGlowMin) *
                                            twinkle * kFireflyTwinkleDepth) *
                                           slow_fade +
-                                          proximity_boost);
+                                          proximity_boost +
+                                          active_bonus * 0.08f);
     changed = true;
 
     if (distance < 9.5f) {

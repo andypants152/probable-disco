@@ -8,8 +8,16 @@ class TerrainGenerator;
 
 class OwlEncounter {
  public:
+  struct DialogueEvent {
+    int line = 0;
+    Vec3 target_position = {};
+    const char* text = "";
+    float seconds = 2.0f;
+  };
+
   void init(const TerrainGenerator& generator);
   bool update(float dt, const TerrainGenerator& generator, Vec3 fox_position, bool interact_pressed);
+  bool consume_dialogue_event(DialogueEvent& event);
 
   Vec3 position() const { return position_; }
   Vec3 perch_position() const { return perch_position_; }
@@ -38,6 +46,7 @@ class OwlEncounter {
   float wing_pose_ = 0.0f;
   float timer_ = 0.0f;
   int dialogue_line_ = 0;
+  int pending_dialogue_line_ = 0;
   bool prompt_visible_ = false;
 };
 
