@@ -28,7 +28,7 @@ jobs:
           actions-cache-folder: emsdk-cache
 
       - name: Build Web/WASM
-        run: make web
+        run: make web CMAKE=/usr/bin/cmake CMAKE_BIN=/usr/bin/cmake
 
       - name: Verify deploy files
         run: |
