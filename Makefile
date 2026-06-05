@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := _usage
 
-CMAKE_BIN := $(or $(wildcard /usr/bin/cmake),cmake)
+CMAKE_BIN := $(or $(wildcard /usr/local/bin/cmake),$(wildcard /usr/bin/cmake),$(wildcard /snap/bin/cmake),cmake)
 EMCMAKE_BIN ?= emcmake
 
 .PHONY: _usage web switch
