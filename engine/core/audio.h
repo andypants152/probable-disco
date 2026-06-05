@@ -12,5 +12,11 @@ void audio_play_mote_chime(float intensity);
 void audio_play_mote_note(float frequency, float intensity, float pan);
 void audio_play_owl_appear();
 void audio_play_footstep_rustle(float intensity);
+void audio_play_squirrel_idle();
+void audio_play_squirrel_scamper();
+void audio_play_squirrel_alert();
+void audio_play_squirrel_accept_acorn();
+void audio_play_squirrel_quest_complete();
+void audio_play_acorn_pickup();
 
 }  // namespace voxel

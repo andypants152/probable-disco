@@ -124,7 +124,7 @@ void App::frame(Renderer& renderer, const CameraInput& input) {
                                                  generator_,
                                                  fox_position,
                                                  gameplay_input.interact || gameplay_input.action_pressed);
-  const bool gameplay_changed = firefly_loop_.update(gameplay_input.delta_time, generator_, fox_position, fox_heading);
+  bool gameplay_changed = firefly_loop_.update(gameplay_input.delta_time, generator_, fox_position, fox_heading);
   const bool squirrel_changed = squirrel_quest_.update(gameplay_input.delta_time,
                                                        generator_,
                                                        firefly_loop_,
@@ -132,6 +132,10 @@ void App::frame(Renderer& renderer, const CameraInput& input) {
                                                        !conversation_controller_.active() && !conversation_started);
   OwlEncounter::DialogueEvent owl_dialogue = {};
   if (owl_encounter_.consume_dialogue_event(owl_dialogue)) {
+    if (owl_dialogue.line == 1 && !firefly_loop_.fireflies_unlocked()) {
+      firefly_loop_.unlock_fireflies(generator_);
+      gameplay_changed = true;
+    }
     ConversationController::Request request = {};
     request.speaker_position = owl_encounter_.position();
     request.listener_position = fox_position;
@@ -152,18 +156,50 @@ void App::frame(Renderer& renderer, const CameraInput& input) {
     conversation_started = true;
   }
   if (!conversation_controller_.active() && !conversation_started) {
+    squirrel_approach_events_.clear();
+    squirrel_quest_.drain_approach_events(squirrel_approach_events_);
+    if (!squirrel_approach_events_.empty()) {
+      const SquirrelQuest::ApproachEvent& event = squirrel_approach_events_.front();
+      ConversationController::Request request = {};
+      request.speaker_position = event.squirrel_position;
+      request.listener_position = fox_position;
+      request.speaker_id = event.squirrel_id;
+      request.text = "";
+      request.seconds = event.seconds;
+      request.shot = ConversationController::Shot::FollowSpeaker;
+      request.show_subtitle = false;
+      conversation_controller_.begin(camera_, request);
+      conversation_started = true;
+    }
+  }
+  Vec3 active_squirrel_position = {};
+  const bool active_squirrel_conversation =
+      conversation_controller_.active() &&
+      squirrel_quest_.squirrel_position(conversation_controller_.speaker_id(), active_squirrel_position);
+  if (active_squirrel_conversation) {
+    conversation_controller_.set_speaker_position(active_squirrel_position);
+  }
+  if (!conversation_started && (!conversation_controller_.active() || active_squirrel_conversation)) {
     squirrel_dialogue_events_.clear();
     squirrel_quest_.drain_dialogue_events(squirrel_dialogue_events_);
-    if (!squirrel_dialogue_events_.empty()) {
-      const SquirrelQuest::DialogueEvent& event = squirrel_dialogue_events_.front();
+    for (const SquirrelQuest::DialogueEvent& event : squirrel_dialogue_events_) {
+      if (conversation_controller_.active() && conversation_controller_.speaker_id() != event.squirrel_id) {
+        continue;
+      }
       ConversationController::Request request = {};
       request.speaker_position = event.squirrel_position;
       request.listener_position = fox_position;
       request.speaker_id = event.squirrel_id;
       request.text = event.text;
       request.seconds = event.seconds;
-      conversation_controller_.begin(camera_, request);
+      request.shot = ConversationController::Shot::SpeakerCloseUp;
+      if (conversation_controller_.active()) {
+        conversation_controller_.replace_line(camera_, request);
+      } else {
+        conversation_controller_.begin(camera_, request);
+      }
       conversation_started = true;
+      break;
     }
   }
   squirrel_completion_events_.clear();

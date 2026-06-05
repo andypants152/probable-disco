@@ -81,6 +81,7 @@ class App {
   FireflyLoop firefly_loop_;
   OwlEncounter owl_encounter_;
   SquirrelQuest squirrel_quest_;
+  std::vector<SquirrelQuest::ApproachEvent> squirrel_approach_events_;
   std::vector<SquirrelQuest::DialogueEvent> squirrel_dialogue_events_;
   std::vector<SquirrelQuest::CompletionEvent> squirrel_completion_events_;
   std::array<GameplayLight, kMaxGameplayLights> gameplay_lights_ = {};

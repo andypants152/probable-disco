@@ -39,6 +39,12 @@ class SquirrelQuest {
     float seconds = 2.0f;
   };
 
+  struct ApproachEvent {
+    Vec3 squirrel_position = {};
+    std::uint32_t squirrel_id = 0;
+    float seconds = 3.0f;
+  };
+
   void init(const TerrainGenerator& generator, const FireflyLoop& firefly_loop);
   bool update(float dt,
               const TerrainGenerator& generator,
@@ -60,6 +66,8 @@ class SquirrelQuest {
   int completed_squirrels() const;
   int carried_acorns() const { return carried_acorns_; }
   bool has_active_quest() const { return active_squirrel_id_ != 0; }
+  bool squirrel_position(std::uint32_t squirrel_id, Vec3& position) const;
+  void drain_approach_events(std::vector<ApproachEvent>& events);
   void drain_dialogue_events(std::vector<DialogueEvent>& events);
   void drain_completion_events(std::vector<CompletionEvent>& events);
 
@@ -70,6 +78,7 @@ class SquirrelQuest {
     int required_acorns = kRequiredAcorns;
     int collected_acorns = 0;
     bool completed = false;
+    bool approach_started = false;
     bool greeted = false;
   };
 
@@ -78,6 +87,7 @@ class SquirrelQuest {
     Vec3 home = {};
     Vec3 approach_start = {};
     Vec3 position = {};
+    int lantern_index = -1;
     float heading = 0.0f;
     float home_heading = 0.0f;
     float animation_timer = 0.0f;
@@ -85,6 +95,8 @@ class SquirrelQuest {
     float approach_duration = 0.0f;
     float prompt_cooldown = 0.0f;
     float happy_timer = 0.0f;
+    float idle_sound_cooldown = 0.0f;
+    float scamper_sound_cooldown = 0.0f;
     bool active = false;
   };
 
@@ -92,6 +104,7 @@ class SquirrelQuest {
     std::uint32_t id = 0;
     Vec3 home = {};
     Vec3 position = {};
+    int lantern_index = -1;
     float phase = 0.0f;
     bool active = false;
   };
@@ -108,6 +121,8 @@ class SquirrelQuest {
   Squirrel* nearest_squirrel(Vec3 fox_position, float max_distance);
   const Squirrel* nearest_squirrel(Vec3 fox_position, float max_distance) const;
   std::uint32_t best_incomplete_squirrel_id(Vec3 fox_position) const;
+  std::uint32_t display_squirrel_id() const;
+  void remove_surplus_acorns_for_lantern(int lantern_index);
 
   std::vector<Squirrel> squirrels_;
   std::vector<Acorn> acorns_;
@@ -115,6 +130,7 @@ class SquirrelQuest {
   std::unordered_set<std::uint32_t> known_squirrel_ids_;
   std::unordered_set<std::uint32_t> known_acorn_ids_;
   std::unordered_set<std::uint32_t> collected_acorn_ids_;
+  std::vector<ApproachEvent> approach_events_;
   std::vector<DialogueEvent> dialogue_events_;
   std::vector<CompletionEvent> completion_events_;
   std::vector<Vec3> lit_lantern_positions_;

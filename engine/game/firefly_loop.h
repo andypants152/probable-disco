@@ -14,6 +14,7 @@ class TerrainGenerator;
 class FireflyLoop {
  public:
   void init(const TerrainGenerator& generator);
+  void unlock_fireflies(const TerrainGenerator& generator);
   bool update(float dt, const TerrainGenerator& generator, Vec3 fox_position, float fox_heading);
 
   void append_dynamic_mesh(Mesh& mesh, Vec3 fox_position, float fox_heading) const;
@@ -31,6 +32,7 @@ class FireflyLoop {
   int deposited_fireflies() const;
   int required_fireflies() const;
   int active_firefly_count() const;
+  bool fireflies_unlocked() const { return fireflies_unlocked_; }
 
   float firefly_glow_intensity() const;
   float lantern_light_intensity() const;
@@ -80,6 +82,7 @@ class FireflyLoop {
   int active_lantern_index_ = 0;
   int lantern_sequence_ = 0;
   int carried_fireflies_ = 0;
+  bool fireflies_unlocked_ = false;
   float firefly_orbit_timer_ = 0.0f;
   float firefly_chime_cooldown_ = 1.0f;
   float deposit_cooldown_ = 0.0f;

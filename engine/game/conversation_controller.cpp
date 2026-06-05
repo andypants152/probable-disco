@@ -59,6 +59,10 @@ void ConversationController::replace_line(const Camera& camera, const Request& r
   begin_internal(camera, request, false);
 }
 
+void ConversationController::set_speaker_position(Vec3 speaker_position) {
+  speaker_position_ = speaker_position;
+}
+
 void ConversationController::begin_internal(const Camera& camera, const Request& request, bool reset_return_pose) {
   phase_ = Phase::EaseIn;
   start_pose_ = pose_from_camera(camera);
@@ -69,11 +73,16 @@ void ConversationController::begin_internal(const Camera& camera, const Request&
   return_start_pose_ = start_pose_;
   speaker_position_ = request.speaker_position;
   listener_position_ = request.listener_position;
+  focus_position_ = request.focus_position;
   speaker_id_ = request.speaker_id;
+  shot_ = request.shot;
+  show_subtitle_ = request.show_subtitle && request.text != nullptr && request.text[0] != '\0';
   phase_timer_ = 0.0f;
   subtitle_timer_ = 0.0f;
   subtitle_seconds_ = std::max(0.2f, request.seconds);
-  subtitles_show(request.text, subtitle_seconds_);
+  if (show_subtitle_) {
+    subtitles_show(request.text, subtitle_seconds_);
+  }
 }
 
 bool ConversationController::update(float dt, bool confirm_pressed, Camera& camera) {
@@ -86,6 +95,15 @@ bool ConversationController::update(float dt, bool confirm_pressed, Camera& came
 
   if ((phase_ == Phase::EaseIn || phase_ == Phase::Talking) && confirm_pressed) {
     begin_return(camera, true);
+  }
+
+  if (shot_ == Shot::FollowSpeaker) {
+    Request request = {};
+    request.speaker_position = speaker_position_;
+    request.listener_position = listener_position_;
+    request.focus_position = focus_position_;
+    request.shot = shot_;
+    target_pose_ = conversation_pose(camera, request);
   }
 
   if (phase_ == Phase::EaseIn) {
@@ -111,6 +129,7 @@ bool ConversationController::update(float dt, bool confirm_pressed, Camera& came
       apply_pose(camera, return_pose_);
       phase_ = Phase::Idle;
       speaker_id_ = 0;
+      show_subtitle_ = false;
     }
   }
 
@@ -137,6 +156,9 @@ ConversationController::CameraPose ConversationController::conversation_pose(con
   }
   if (request.shot == Shot::LookAtFocus) {
     return look_at_focus_pose(camera, request.listener_position, request.focus_position);
+  }
+  if (request.shot == Shot::FollowSpeaker) {
+    return follow_speaker_pose(camera, request.listener_position, request.speaker_position);
   }
   return over_shoulder_pose(camera, request.listener_position, request.speaker_position);
 }
@@ -196,6 +218,27 @@ ConversationController::CameraPose ConversationController::look_at_focus_pose(co
       shoulder * 2.15f +
       Vec3{0.0f, 1.95f, 0.0f};
   const Vec3 look_target = focus_position + Vec3{0.0f, 0.18f, 0.0f};
+  const Vec3 look_direction = normalize(look_target - camera_position);
+  const float yaw = std::atan2(look_direction.z, look_direction.x);
+  const float pitch = std::asin(std::max(-1.0f, std::min(1.0f, look_direction.y)));
+  return {camera_position, yaw, pitch};
+}
+
+ConversationController::CameraPose ConversationController::follow_speaker_pose(const Camera& camera,
+                                                                               Vec3 listener_position,
+                                                                               Vec3 speaker_position) {
+  const Vec3 listener_to_speaker = horizontal_direction(listener_position, speaker_position, camera.forward());
+  Vec3 shoulder = normalize(cross({0.0f, 1.0f, 0.0f}, listener_to_speaker));
+  const Vec3 midpoint = listener_position * 0.45f + speaker_position * 0.55f;
+  const Vec3 camera_side = {camera.position.x - midpoint.x, 0.0f, camera.position.z - midpoint.z};
+  if (dot(camera_side, shoulder) < 0.0f) {
+    shoulder = shoulder * -1.0f;
+  }
+  const Vec3 camera_position = listener_position -
+      listener_to_speaker * 2.15f +
+      shoulder * 3.35f +
+      Vec3{0.0f, 2.0f, 0.0f};
+  const Vec3 look_target = speaker_position + Vec3{0.0f, 0.74f, 0.0f};
   const Vec3 look_direction = normalize(look_target - camera_position);
   const float yaw = std::atan2(look_direction.z, look_direction.x);
   const float pitch = std::asin(std::max(-1.0f, std::min(1.0f, look_direction.y)));

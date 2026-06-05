@@ -186,6 +186,7 @@ void add_gameplay_light(std::array<GameplayLight, kMaxGameplayLights>& lights,
 
 void FireflyLoop::init(const TerrainGenerator& generator) {
   carried_fireflies_ = 0;
+  fireflies_unlocked_ = false;
   active_lantern_index_ = 0;
   lantern_sequence_ = 0;
   firefly_orbit_timer_ = 0.0f;
@@ -197,6 +198,14 @@ void FireflyLoop::init(const TerrainGenerator& generator) {
     firefly = {};
   }
   activate_lantern(generator, 0);
+}
+
+void FireflyLoop::unlock_fireflies(const TerrainGenerator& generator) {
+  if (fireflies_unlocked_) {
+    return;
+  }
+  fireflies_unlocked_ = true;
+  spawn_fireflies_for_lantern(generator, active_lantern_index_);
 }
 
 void FireflyLoop::activate_lantern(const TerrainGenerator& generator, int sequence) {
@@ -222,7 +231,13 @@ void FireflyLoop::activate_lantern(const TerrainGenerator& generator, int sequen
   lantern.glow_intensity = 0.0f;
   lantern.glow_timer = 0.0f;
   lantern.pulse_timer = 0.0f;
-  spawn_fireflies_for_lantern(generator, active_lantern_index_);
+  if (fireflies_unlocked_) {
+    spawn_fireflies_for_lantern(generator, active_lantern_index_);
+  } else {
+    for (Firefly& firefly : fireflies_) {
+      firefly = {};
+    }
+  }
 }
 
 void FireflyLoop::spawn_fireflies_for_lantern(const TerrainGenerator& generator, int index) {
