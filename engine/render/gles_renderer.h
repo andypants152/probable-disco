@@ -78,6 +78,12 @@ class GlesRenderer : public Renderer {
   void upload_overlay_batch(const QuadBatch& batch);
   void ensure_overlay_buffer();
   void draw_buffer(const MeshBuffer& buffer);
+  void apply_mesh_shading(float outline_width,
+                          float outline_strength,
+                          float outline_red,
+                          float outline_green,
+                          float outline_blue,
+                          float min_fill_light);
   void draw_overlay_batch(int framebuffer_width, int framebuffer_height);
   void destroy_buffer(MeshBuffer& buffer);
   void destroy_buffers();
@@ -100,6 +106,10 @@ class GlesRenderer : public Renderer {
   GLint light_position_radius_uniform_ = -1;
   GLint light_color_intensity_uniform_ = -1;
   GLint light_falloff_uniform_ = -1;
+  GLint outline_width_uniform_ = -1;
+  GLint outline_strength_uniform_ = -1;
+  GLint outline_color_uniform_ = -1;
+  GLint min_fill_light_uniform_ = -1;
   GLint overlay_viewport_uniform_ = -1;
   GLint overlay_texture_uniform_ = -1;
   float light_position_radius_[kMaxRendererGameplayLights * 4] = {};

@@ -53,23 +53,22 @@ uniform int u_light_count;
 uniform vec4 u_light_position_radius[24];
 uniform vec4 u_light_color_intensity[24];
 uniform float u_light_falloff[24];
+uniform float u_outline_width;
+uniform float u_outline_strength;
+uniform vec3 u_outline_color;
+uniform float u_min_fill_light;
 
 out vec4 frag_color;
 
-float cubeEdge(float a, float b) {
-  float width = 0.13;
+float cubeEdge(float a, float b, float width) {
   return max(step(0.5 - width, abs(a)), step(0.5 - width, abs(b)));
 }
 
 void main() {
   vec3 normal = normalize(v_normal);
-  vec3 normal_axis = abs(normal);
-  vec2 micro_uv = normal_axis.x > normal_axis.y && normal_axis.x > normal_axis.z
-    ? v_micro_position.yz
-    : normal_axis.y > normal_axis.z
-      ? v_micro_position.xz
-      : v_micro_position.xy;
-  float edge = cubeEdge(micro_uv.x, micro_uv.y);
+  float edge = min(cubeEdge(v_micro_position.x, v_micro_position.y, u_outline_width),
+                   min(cubeEdge(v_micro_position.x, v_micro_position.z, u_outline_width),
+                       cubeEdge(v_micro_position.y, v_micro_position.z, u_outline_width)));
 
   vec3 moon_sky = vec3(0.894, 1.0, 0.969);
   vec3 moon_ground = vec3(0.314, 0.384, 0.267);
@@ -91,15 +90,16 @@ void main() {
     float falloff = pow(falloff_base, max(u_light_falloff[i], 0.5));
     local_light += light_color_intensity.rgb * (falloff * light_color_intensity.w * 1.20);
   }
-  vec3 outline = vec3(0.015, 0.020, 0.018);
+  vec3 outline = u_outline_color;
   vec3 fog_color = vec3(0.114, 0.169, 0.153);
   float fog_depth = v_depth * 0.042;
   float fog = clamp((fog_depth * fog_depth) / (1.0 + fog_depth * fog_depth), 0.0, 0.985);
   float emissive = clamp(1.0 - v_color.a, 0.0, 1.0);
   vec3 local_visible = local_light * (1.0 - emissive * 0.70);
-  vec3 fill = v_color.rgb * light + v_color.rgb * local_visible * 1.15 + local_visible * 0.16;
+  vec3 fill_light = max(light, vec3(u_min_fill_light));
+  vec3 fill = v_color.rgb * fill_light + v_color.rgb * local_visible * 1.15 + local_visible * 0.16;
   vec3 emissive_color = mix(v_color.rgb, min(v_color.rgb * 1.25, vec3(1.0)), emissive);
-  vec3 outlined = mix(fill, outline, edge * (1.0 - emissive * 0.78));
+  vec3 outlined = mix(fill, outline, edge * u_outline_strength * (1.0 - emissive * 0.78));
   vec3 lit_color = mix(outlined, emissive_color, emissive);
   float local_strength = clamp(max(max(local_light.r, local_light.g), local_light.b), 0.0, 1.0);
   frag_color = vec4(mix(lit_color, fog_color, fog * (1.0 - emissive * 0.72) * (1.0 - local_strength * 0.35)), 1.0);
@@ -343,9 +343,11 @@ void GlesRenderer::render_frame(const RenderFrame& frame) {
   for (const RenderCommand& command : frame.commands) {
     switch (command.type) {
       case RenderCommandType::DrawStaticMesh:
+        apply_mesh_shading(0.13f, 1.0f, 0.015f, 0.020f, 0.018f, 0.0f);
         draw_buffer(static_mesh_);
         break;
       case RenderCommandType::DrawDynamicMesh:
+        apply_mesh_shading(0.085f, 1.0f, 0.0f, 0.0f, 0.0f, 0.26f);
         draw_buffer(dynamic_mesh_);
         break;
       case RenderCommandType::DrawSubtitle:
@@ -431,6 +433,10 @@ bool GlesRenderer::create_program() {
   light_position_radius_uniform_ = glGetUniformLocation(program_, "u_light_position_radius");
   light_color_intensity_uniform_ = glGetUniformLocation(program_, "u_light_color_intensity");
   light_falloff_uniform_ = glGetUniformLocation(program_, "u_light_falloff");
+  outline_width_uniform_ = glGetUniformLocation(program_, "u_outline_width");
+  outline_strength_uniform_ = glGetUniformLocation(program_, "u_outline_strength");
+  outline_color_uniform_ = glGetUniformLocation(program_, "u_outline_color");
+  min_fill_light_uniform_ = glGetUniformLocation(program_, "u_min_fill_light");
   return true;
 }
 
@@ -557,6 +563,18 @@ void GlesRenderer::draw_buffer(const MeshBuffer& buffer) {
 
   glBindVertexArray(buffer.vao);
   glDrawElements(GL_TRIANGLES, buffer.index_count, GL_UNSIGNED_INT, nullptr);
+}
+
+void GlesRenderer::apply_mesh_shading(float outline_width,
+                                      float outline_strength,
+                                      float outline_red,
+                                      float outline_green,
+                                      float outline_blue,
+                                      float min_fill_light) {
+  glUniform1f(outline_width_uniform_, outline_width);
+  glUniform1f(outline_strength_uniform_, outline_strength);
+  glUniform3f(outline_color_uniform_, outline_red, outline_green, outline_blue);
+  glUniform1f(min_fill_light_uniform_, min_fill_light);
 }
 
 void GlesRenderer::draw_overlay_batch(int framebuffer_width, int framebuffer_height) {

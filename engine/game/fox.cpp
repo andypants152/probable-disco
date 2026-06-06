@@ -2,7 +2,6 @@
 
 #include <array>
 #include <cmath>
-#include <cstdint>
 
 namespace voxel {
 
@@ -28,34 +27,6 @@ constexpr std::array<Face, 6> kBoxFaces = {{
   {{0.0f, 0.0f, -1.0f}, {{{0.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {1.0f, 1.0f, 0.0f}, {1.0f, 0.0f, 0.0f}}}},
 }};
 
-std::uint8_t shade_channel(std::uint8_t channel, float shade) {
-  const int value = static_cast<int>(static_cast<float>(channel) * shade);
-  if (value < 0) {
-    return 0;
-  }
-  if (value > 255) {
-    return 255;
-  }
-  return static_cast<std::uint8_t>(value);
-}
-
-PackedColor shaded(PackedColor color, Vec3 normal) {
-  float shade = 0.72f;
-  if (normal.y > 0.5f) {
-    shade = 1.0f;
-  } else if (normal.y < -0.5f) {
-    shade = 0.48f;
-  } else if (normal.x > 0.5f || normal.z > 0.5f) {
-    shade = 0.84f;
-  }
-
-  const auto r = static_cast<std::uint8_t>((color >> 24) & 0xffu);
-  const auto g = static_cast<std::uint8_t>((color >> 16) & 0xffu);
-  const auto b = static_cast<std::uint8_t>((color >> 8) & 0xffu);
-  const auto a = static_cast<std::uint8_t>(color & 0xffu);
-  return pack_rgba(shade_channel(r, shade), shade_channel(g, shade), shade_channel(b, shade), a);
-}
-
 Vec3 rotate_y(Vec3 v, float heading) {
   const float s = std::sin(heading);
   const float c = std::cos(heading);
@@ -79,7 +50,7 @@ void append_box(Mesh& mesh, const Box& box, Vec3 origin, float heading) {
       const Vec3 rotated = rotate_y(local, heading);
       mesh.vertices.push_back(origin + rotated);
       mesh.normals.push_back(normal);
-      mesh.colors.push_back(shaded(box.color, normal));
+      mesh.colors.push_back(box.color);
       mesh.micro_positions.push_back({corner.x - 0.5f, corner.y - 0.5f, corner.z - 0.5f});
     }
 
@@ -100,7 +71,7 @@ void append_fox_mesh(Mesh& mesh, Vec3 ground_center, float heading_radians) {
   constexpr PackedColor white = pack_rgba(236, 231, 211);
   constexpr PackedColor black = pack_rgba(22, 19, 16);
 
-  const std::array<Box, 17> boxes = {{
+  const std::array<Box, 16> boxes = {{
     // Body and chest.
     {{-1.25f, 0.55f, -1.05f}, {1.25f, 1.35f, 1.10f}, orange},
     {{-0.72f, 0.62f, 0.92f}, {0.72f, 1.30f, 1.22f}, white},
@@ -124,9 +95,6 @@ void append_fox_mesh(Mesh& mesh, Vec3 ground_center, float heading_radians) {
     {{-0.48f, 0.96f, -2.15f}, {0.48f, 1.58f, -0.95f}, dark_orange},
     {{-0.40f, 1.22f, -2.92f}, {0.40f, 1.82f, -2.08f}, orange},
     {{-0.34f, 1.32f, -3.35f}, {0.34f, 1.76f, -2.86f}, white},
-
-    // Small shadow block to ground the model visually.
-    {{-1.28f, 0.01f, -1.05f}, {1.28f, 0.04f, 1.08f}, pack_rgba(42, 55, 32)},
   }};
 
   for (const Box& box : boxes) {
