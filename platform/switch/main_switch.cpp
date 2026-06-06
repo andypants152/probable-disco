@@ -13,6 +13,7 @@ namespace {
 constexpr float kStickMax = 32767.0f;
 constexpr float kMoveStickDeadZone = 0.24f;
 constexpr float kLookStickDeadZone = 0.14f;
+constexpr float kMaxFrameDeltaTime = 0.05f;
 
 float normalized_axis(s32 value) {
   float normalized = static_cast<float>(value) / kStickMax;
@@ -29,9 +30,18 @@ float apply_dead_zone(float value, float dead_zone) {
   return std::fabs(value) >= dead_zone ? value : 0.0f;
 }
 
-void update_input(voxel::CameraInput& input, const PadState& pad) {
+float measure_frame_delta_time(u64& last_frame_tick) {
+  const u64 now = armGetSystemTick();
+  const u64 elapsed_ticks = now - last_frame_tick;
+  last_frame_tick = now;
+
+  const double elapsed_seconds = static_cast<double>(armTicksToNs(elapsed_ticks)) / 1000000000.0;
+  return static_cast<float>(std::max(0.0, std::min(static_cast<double>(kMaxFrameDeltaTime), elapsed_seconds)));
+}
+
+void update_input(voxel::CameraInput& input, const PadState& pad, float delta_time) {
   input = {};
-  input.delta_time = 1.0f / 60.0f;
+  input.delta_time = delta_time;
 
   const u64 held = padGetButtons(&pad);
   const HidAnalogStickState left_stick = padGetStickPos(&pad, 0);
@@ -119,7 +129,9 @@ int main(int, char**) {
     return 1;
   }
 
+  u64 last_frame_tick = armGetSystemTick();
   while (appletMainLoop()) {
+    const float delta_time = measure_frame_delta_time(last_frame_tick);
     padUpdate(&pad);
     const u64 down = padGetButtonsDown(&pad);
     if ((down & HidNpadButton_Plus) != 0) {
@@ -127,7 +139,7 @@ int main(int, char**) {
     }
     handle_dev_buttons(app, down);
     voxel::CameraInput input;
-    update_input(input, pad);
+    update_input(input, pad, delta_time);
     input.interact = (down & HidNpadButton_A) != 0;
     input.action_pressed = input.interact;
     app.frame(renderer, input);

@@ -25,13 +25,6 @@ class SquirrelQuest {
     float seconds = 2.0f;
   };
 
-  struct ConversationRequest {
-    Vec3 squirrel_position = {};
-    std::uint32_t squirrel_id = 0;
-    char text[96] = {};
-    float seconds = 2.0f;
-  };
-
   struct DialogueEvent {
     Vec3 squirrel_position = {};
     std::uint32_t squirrel_id = 0;
@@ -57,7 +50,6 @@ class SquirrelQuest {
                       const FireflyLoop& firefly_loop,
                       Vec3 fox_position,
                       bool allow_dialogue);
-  bool conversation_request(Vec3 fox_position, ConversationRequest& request);
   bool set_talking_squirrel(std::uint32_t squirrel_id, bool talking);
 
   void append_dynamic_mesh(Mesh& mesh, Vec3 fox_position) const;

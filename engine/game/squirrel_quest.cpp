@@ -14,14 +14,12 @@ namespace voxel {
 
 namespace {
 
-constexpr float kPi = 3.14159265358979323846f;
 constexpr float kTwoPi = 6.28318530717958647692f;
 constexpr float kSquirrelDiscoverRadius = 104.0f;
 constexpr float kLitLanternAcornRadius = 15.5f;
 constexpr float kLitLanternSquirrelRadius = 8.2f;
 constexpr float kSquirrelRenderDistance = 46.0f;
 constexpr float kAcornRenderDistance = 36.0f;
-constexpr float kSquirrelInteractRadius = 3.9f;
 constexpr float kSquirrelApproachCameraRadius = 26.0f;
 constexpr float kSquirrelAutoTalkRadius = 10.5f;
 constexpr float kSquirrelQuestCreditRadius = 30.0f;
@@ -57,10 +55,6 @@ std::uint32_t hash2(int x, int z, std::uint32_t seed) {
 
 float hash01(int x, int z, std::uint32_t seed) {
   return static_cast<float>(hash2(x, z, seed) & 0xffffu) / 65535.0f;
-}
-
-float signed_hash01(int x, int z, std::uint32_t seed) {
-  return hash01(x, z, seed) * 2.0f - 1.0f;
 }
 
 int floor_to_int(float value) {
@@ -175,66 +169,6 @@ bool has_nearby_solid_above_ground(const TerrainGenerator& generator, int cell_x
   return false;
 }
 
-bool find_tree_root_site(const TerrainGenerator& generator,
-                         int base_x,
-                         int base_z,
-                         int search_radius,
-                         Vec3& position,
-                         float& heading) {
-  float best_score = -1.0f;
-  int best_x = 0;
-  int best_z = 0;
-  int best_trunk_x = 0;
-  int best_trunk_z = 0;
-
-  for (int dz = -search_radius; dz <= search_radius; ++dz) {
-    for (int dx = -search_radius; dx <= search_radius; ++dx) {
-      const int trunk_x = base_x + dx;
-      const int trunk_z = base_z + dz;
-      const int ground_y = generator.terrain_height(trunk_x, trunk_z);
-      if (generator.voxel_at(trunk_x, ground_y + 1, trunk_z).type != VoxelType::Bark) {
-        continue;
-      }
-
-      constexpr int kOffsetCount = 8;
-      constexpr int offsets[kOffsetCount][2] = {
-          {1, 0}, {-1, 0}, {0, 1}, {0, -1}, {1, 1}, {-1, 1}, {1, -1}, {-1, -1},
-      };
-      for (int i = 0; i < kOffsetCount; ++i) {
-        const int x = trunk_x + offsets[i][0];
-        const int z = trunk_z + offsets[i][1];
-        if (!is_clear_ground(generator, static_cast<float>(x), static_cast<float>(z), 3)) {
-          continue;
-        }
-        const float score = hash01(x, z, 0x71517172u) -
-            0.002f * distance_sq(static_cast<float>(x), static_cast<float>(z),
-                                 static_cast<float>(base_x), static_cast<float>(base_z));
-        if (score > best_score) {
-          best_score = score;
-          best_x = x;
-          best_z = z;
-          best_trunk_x = trunk_x;
-          best_trunk_z = trunk_z;
-        }
-      }
-    }
-  }
-
-  if (best_score < 0.0f) {
-    return false;
-  }
-
-  const float jitter_x = signed_hash01(best_x, best_z, 0x726f6f74u) * 0.18f;
-  const float jitter_z = signed_hash01(best_x, best_z, 0x73697465u) * 0.18f;
-  position = {
-      static_cast<float>(best_x) + 0.5f + jitter_x,
-      interpolated_terrain_height(generator, static_cast<float>(best_x) + 0.5f, static_cast<float>(best_z) + 0.5f) + 1.0f,
-      static_cast<float>(best_z) + 0.5f + jitter_z,
-  };
-  heading = std::atan2(static_cast<float>(best_trunk_x - best_x), static_cast<float>(best_trunk_z - best_z));
-  return true;
-}
-
 bool dressing_origin_for_grid(int grid_x, int grid_z, int& world_x, int& world_z, float& seed) {
   seed = hash01(grid_x, grid_z, 0xdec042u);
   const float ox = (hash01(grid_x + 300, grid_z - 300, 0xdec042u) - 0.5f) * 3.6f;
@@ -267,47 +201,6 @@ bool near_major_dressing(float x, float z, float radius) {
     }
   }
   return false;
-}
-
-bool find_dressing_perch(const TerrainGenerator& generator, int base_x, int base_z, Vec3& position, float& heading) {
-  float best_score = -1.0f;
-  int best_x = 0;
-  int best_z = 0;
-  float best_seed = 0.0f;
-  for (int grid_x = base_x - 18; grid_x <= base_x + 18; grid_x += kWorldDressingStep) {
-    for (int grid_z = base_z - 18; grid_z <= base_z + 18; grid_z += kWorldDressingStep) {
-      int world_x = 0;
-      int world_z = 0;
-      float seed = 0.0f;
-      if (!dressing_origin_for_grid(grid_x, grid_z, world_x, world_z, seed) || seed <= 0.925f || seed > 0.965f) {
-        continue;
-      }
-      const float score = seed - 0.001f * distance_sq(static_cast<float>(world_x), static_cast<float>(world_z),
-                                                      static_cast<float>(base_x), static_cast<float>(base_z));
-      if (score > best_score) {
-        best_score = score;
-        best_x = world_x;
-        best_z = world_z;
-        best_seed = seed;
-      }
-    }
-  }
-
-  if (best_score < 0.0f) {
-    return false;
-  }
-
-  const float x = static_cast<float>(best_x);
-  const float z = static_cast<float>(best_z);
-  const float ground = static_cast<float>(generator.terrain_height(best_x, best_z));
-  heading = best_seed > 0.5f ? kPi * 0.5f : 0.0f;
-  if (best_seed > 0.94f) {
-    const float height = 0.45f + hash01(best_x + 23, best_z - 17, 0x7374756du) * 0.35f;
-    position = {x, ground + 1.0f + height + 0.08f, z};
-  } else {
-    position = {x, ground + 1.0f + 0.66f, z};
-  }
-  return true;
 }
 
 bool find_lit_lantern_squirrel_site(const TerrainGenerator& generator,
@@ -657,34 +550,6 @@ SquirrelQuest::UpdateResult SquirrelQuest::update(float dt,
   }
 
   return result;
-}
-
-bool SquirrelQuest::conversation_request(Vec3 fox_position, ConversationRequest& request) {
-  Squirrel* squirrel = nearest_squirrel(fox_position, kSquirrelInteractRadius);
-  if (squirrel == nullptr) {
-    return false;
-  }
-
-  QuestProgress& progress = progress_for(squirrel->id);
-  active_squirrel_id_ = squirrel->id;
-  request = {};
-  request.squirrel_position = squirrel->position;
-  request.squirrel_id = squirrel->id;
-  if (progress.completed) {
-    std::snprintf(request.text, sizeof(request.text), "Thank you! The forest remembers.");
-    request.seconds = 2.4f;
-  } else {
-    std::snprintf(request.text,
-                  sizeof(request.text),
-                  "Could you help me find %d acorns?",
-                  progress.required_acorns);
-    request.seconds = 2.45f;
-  }
-  progress.greeted = true;
-  if (audio_ready_for_gameplay_sound()) {
-    audio_play_squirrel_alert();
-  }
-  return true;
 }
 
 bool SquirrelQuest::set_talking_squirrel(std::uint32_t squirrel_id, bool talking) {

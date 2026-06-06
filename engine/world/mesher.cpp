@@ -1079,10 +1079,12 @@ Mesh build_world_mesh(const TerrainGenerator& generator,
 
         for (const Face& face : kFaces) {
           const Voxel neighbor = cache.voxel_at(generator, x + face.dx, y + face.dy, z + face.dz);
-          if (!is_solid(neighbor.type)) {
+          const bool terrain_top_under_tree =
+              face.dy > 0 && is_terrain_type(voxel.type) && is_tree_type(neighbor.type);
+          if (!is_solid(neighbor.type) || terrain_top_under_tree) {
             if (face.dy > 0 && is_terrain_type(voxel.type)) {
               append_surface_tiles(mesh, generator, x, y, z, voxel.type, visual_detail_level);
-              if (voxel.type == VoxelType::Grass) {
+              if (!terrain_top_under_tree && voxel.type == VoxelType::Grass) {
                 append_surface_detail(mesh, generator, x, y, z, detail_budget);
               }
             } else {
