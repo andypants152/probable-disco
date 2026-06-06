@@ -26,6 +26,7 @@ class ConversationController {
     float seconds = 2.0f;
     Shot shot = Shot::OverShoulder;
     bool show_subtitle = true;
+    bool allow_confirm_skip = true;
   };
 
   void begin(const Camera& camera, const Request& request);
@@ -76,6 +77,7 @@ class ConversationController {
   std::uint32_t speaker_id_ = 0;
   Shot shot_ = Shot::OverShoulder;
   bool show_subtitle_ = false;
+  bool allow_confirm_skip_ = true;
   float phase_timer_ = 0.0f;
   float subtitle_timer_ = 0.0f;
   float subtitle_seconds_ = 0.0f;

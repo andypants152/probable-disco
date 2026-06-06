@@ -213,12 +213,18 @@ PackedColor color_for(VoxelType type, Vec3 normal, int world_x, int world_z) {
                 shade);
 }
 
-bool is_terrain_type(VoxelType type) {
-  return type == VoxelType::Grass || type == VoxelType::Dirt || type == VoxelType::Stone;
-}
-
 bool is_tree_type(VoxelType type) {
   return type == VoxelType::Bark || type == VoxelType::Leaves;
+}
+
+VoxelType terrain_type_at_height(int y, int terrain_height) {
+  if (y == terrain_height) {
+    return VoxelType::Grass;
+  }
+  if (y > terrain_height - 3) {
+    return VoxelType::Dirt;
+  }
+  return VoxelType::Stone;
 }
 
 int detail_cap(int base_cap, int visual_detail_level) {
@@ -982,30 +988,37 @@ class WorldMeshSampleCache {
         min_z_(min_z),
         padded_size_x_(size_x + 2),
         padded_size_z_(size_z + 2),
-        heights_(static_cast<std::size_t>(padded_size_x_ * padded_size_z_)),
-        voxels_(static_cast<std::size_t>(padded_size_x_ * padded_size_z_ * kChunkSize)) {
+        heights_(static_cast<std::size_t>(padded_size_x_ * padded_size_z_)) {
     for (int pz = 0; pz < padded_size_z_; ++pz) {
       for (int px = 0; px < padded_size_x_; ++px) {
         const int world_x = min_x_ + px - 1;
         const int world_z = min_z_ + pz - 1;
         heights_[height_index(px, pz)] = generator.terrain_height(world_x, world_z);
-        for (int y = 0; y < kChunkSize; ++y) {
-          voxels_[voxel_index(px, y, pz)] = generator.voxel_at(world_x, y, world_z).type;
-        }
       }
     }
   }
 
-  Voxel voxel_at(const TerrainGenerator& generator, int world_x, int y, int world_z) const {
-    if (y < 0 || y >= kChunkSize) {
-      return generator.voxel_at(world_x, y, world_z);
+  VoxelType render_voxel_type_at(const TerrainGenerator& generator, int world_x, int y, int world_z) const {
+    if (y < 0) {
+      return VoxelType::Stone;
     }
-    const int px = world_x - min_x_ + 1;
-    const int pz = world_z - min_z_ + 1;
-    if (px < 0 || px >= padded_size_x_ || pz < 0 || pz >= padded_size_z_) {
-      return generator.voxel_at(world_x, y, world_z);
+    if (y >= kChunkSize) {
+      return VoxelType::Air;
     }
-    return {voxels_[voxel_index(px, y, pz)]};
+
+    const int height = terrain_height(generator, world_x, world_z);
+    if (y <= height) {
+      return terrain_type_at_height(y, height);
+    }
+
+    return generator.voxel_at(world_x, y, world_z).type;
+  }
+
+  VoxelType tree_voxel_type_at(const TerrainGenerator& generator, int world_x, int y, int world_z) const {
+    if (y < 0 || y >= kChunkSize || y <= terrain_height(generator, world_x, world_z)) {
+      return VoxelType::Air;
+    }
+    return generator.voxel_at(world_x, y, world_z).type;
   }
 
   int terrain_height(const TerrainGenerator& generator, int world_x, int world_z) const {
@@ -1022,16 +1035,11 @@ class WorldMeshSampleCache {
     return static_cast<std::size_t>(px + padded_size_x_ * pz);
   }
 
-  std::size_t voxel_index(int px, int y, int pz) const {
-    return static_cast<std::size_t>(px + padded_size_x_ * (pz + padded_size_z_ * y));
-  }
-
   int min_x_ = 0;
   int min_z_ = 0;
   int padded_size_x_ = 0;
   int padded_size_z_ = 0;
   std::vector<int> heights_;
-  std::vector<VoxelType> voxels_;
 };
 
 Mesh build_world_mesh(const TerrainGenerator& generator,
@@ -1052,49 +1060,74 @@ Mesh build_world_mesh(const TerrainGenerator& generator,
   detail_budget.visual_detail_level = visual_detail_level;
   const WorldMeshSampleCache cache(generator, min_x, min_z, size_x, size_z);
 
-  for (int y = 0; y < kChunkSize; ++y) {
-    for (int z = min_z; z < min_z + size_z; ++z) {
-      for (int x = min_x; x < min_x + size_x; ++x) {
-        const Voxel voxel = cache.voxel_at(generator, x, y, z);
-        if (!is_solid(voxel.type)) {
+  for (int z = min_z; z < min_z + size_z; ++z) {
+    for (int x = min_x; x < min_x + size_x; ++x) {
+      const int height = cache.terrain_height(generator, x, z);
+      if (height < 0 || height >= kChunkSize) {
+        continue;
+      }
+
+      append_surface_tiles(mesh, generator, x, height, z, VoxelType::Grass, visual_detail_level);
+      const bool terrain_top_under_tree =
+          is_tree_type(cache.tree_voxel_type_at(generator, x, height + 1, z));
+      if (!terrain_top_under_tree) {
+        append_surface_detail(mesh, generator, x, height, z, detail_budget);
+      }
+
+      for (const Face& face : kFaces) {
+        if (face.dy != 0) {
           continue;
         }
 
-        if (voxel.type == VoxelType::Bark) {
-          const bool is_base = cache.voxel_at(generator, x, y - 1, z).type != VoxelType::Bark;
+        const int neighbor_height = cache.terrain_height(generator, x + face.dx, z + face.dz);
+        if (neighbor_height >= height) {
+          continue;
+        }
+
+        const int min_side_y = std::max(neighbor_height + 1, height - kMaxVisibleTerrainSideDepth + 1);
+        for (int y = height; y >= min_side_y && y >= 0; --y) {
+          if (is_solid(cache.render_voxel_type_at(generator, x + face.dx, y, z + face.dz))) {
+            continue;
+          }
+
+          const VoxelType type = terrain_type_at_height(y, height);
+          emit_face(mesh, x, y, z, face, type);
+          if (type == VoxelType::Grass) {
+            append_ledge_breakup(mesh, x, y, z, face, detail_budget);
+          }
+        }
+      }
+    }
+  }
+
+  for (int z = min_z; z < min_z + size_z; ++z) {
+    for (int x = min_x; x < min_x + size_x; ++x) {
+      const int height = cache.terrain_height(generator, x, z);
+      const int min_tree_y = std::max(0, height + 1);
+      for (int y = min_tree_y; y < kChunkSize; ++y) {
+        const VoxelType type = cache.tree_voxel_type_at(generator, x, y, z);
+        if (!is_tree_type(type)) {
+          continue;
+        }
+
+        if (type == VoxelType::Bark) {
+          const bool is_base =
+              cache.render_voxel_type_at(generator, x, y - 1, z) != VoxelType::Bark;
           append_bark_visual(mesh, generator, x, y, z, is_base, detail_budget);
           continue;
         }
-        if (voxel.type == VoxelType::Leaves) {
-          bool exposed = false;
-          for (const Face& face : kFaces) {
-            if (!is_tree_type(cache.voxel_at(generator, x + face.dx, y + face.dy, z + face.dz).type)) {
-              exposed = true;
-              break;
-            }
-          }
-          append_leaf_visual(mesh, x, y, z, exposed, detail_budget);
-          continue;
-        }
 
+        bool exposed = false;
         for (const Face& face : kFaces) {
-          const Voxel neighbor = cache.voxel_at(generator, x + face.dx, y + face.dy, z + face.dz);
-          const bool terrain_top_under_tree =
-              face.dy > 0 && is_terrain_type(voxel.type) && is_tree_type(neighbor.type);
-          if (!is_solid(neighbor.type) || terrain_top_under_tree) {
-            if (face.dy > 0 && is_terrain_type(voxel.type)) {
-              append_surface_tiles(mesh, generator, x, y, z, voxel.type, visual_detail_level);
-              if (!terrain_top_under_tree && voxel.type == VoxelType::Grass) {
-                append_surface_detail(mesh, generator, x, y, z, detail_budget);
-              }
-            } else {
-              emit_face(mesh, x, y, z, face, voxel.type);
-              if (voxel.type == VoxelType::Grass && face.dy == 0 && y == cache.terrain_height(generator, x, z)) {
-                append_ledge_breakup(mesh, x, y, z, face, detail_budget);
-              }
-            }
+          if (!is_tree_type(cache.render_voxel_type_at(generator,
+                                                       x + face.dx,
+                                                       y + face.dy,
+                                                       z + face.dz))) {
+            exposed = true;
+            break;
           }
         }
+        append_leaf_visual(mesh, x, y, z, exposed, detail_budget);
       }
     }
   }

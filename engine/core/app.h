@@ -51,6 +51,8 @@ class App {
     std::size_t terrain_triangles = 0;
     std::size_t terrain_largest_chunk_vertices = 0;
     std::size_t terrain_largest_chunk_triangles = 0;
+    std::size_t terrain_rebuilt_surface_columns = 0;
+    std::size_t terrain_skipped_voxel_samples = 0;
     float fps = 0.0f;
     float firefly_glow_intensity = 0.0f;
     float lantern_light_intensity = 0.0f;

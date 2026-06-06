@@ -18,6 +18,8 @@ class TerrainStreamer {
     std::size_t visible_triangles = 0;
     std::size_t largest_chunk_vertices = 0;
     std::size_t largest_chunk_triangles = 0;
+    std::size_t rebuilt_surface_columns = 0;
+    std::size_t skipped_terrain_voxel_samples = 0;
   };
 
   void init(const TerrainGenerator& generator, Vec3 focus_position);

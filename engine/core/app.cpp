@@ -162,6 +162,7 @@ void App::frame(Renderer& renderer, const CameraInput& input) {
     request.speaker_id = 0x0f11u;
     request.text = owl_dialogue.text;
     request.seconds = owl_dialogue.seconds;
+    request.allow_confirm_skip = false;
     if (owl_dialogue.line == 1) {
       request.shot = ConversationController::Shot::SpeakerCloseUp;
     } else {
@@ -298,6 +299,8 @@ void App::frame(Renderer& renderer, const CameraInput& input) {
   frame_stats_.terrain_triangles = terrain_stats.visible_triangles;
   frame_stats_.terrain_largest_chunk_vertices = terrain_stats.largest_chunk_vertices;
   frame_stats_.terrain_largest_chunk_triangles = terrain_stats.largest_chunk_triangles;
+  frame_stats_.terrain_rebuilt_surface_columns = terrain_stats.rebuilt_surface_columns;
+  frame_stats_.terrain_skipped_voxel_samples = terrain_stats.skipped_terrain_voxel_samples;
 
   const bool squirrel_animation_upload_due =
       squirrel_animation_changed && squirrel_animation_upload_timer_ <= 0.0f;

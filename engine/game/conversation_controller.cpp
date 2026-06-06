@@ -77,6 +77,7 @@ void ConversationController::begin_internal(const Camera& camera, const Request&
   speaker_id_ = request.speaker_id;
   shot_ = request.shot;
   show_subtitle_ = request.show_subtitle && request.text != nullptr && request.text[0] != '\0';
+  allow_confirm_skip_ = request.allow_confirm_skip;
   phase_timer_ = 0.0f;
   subtitle_timer_ = 0.0f;
   subtitle_seconds_ = std::max(0.2f, request.seconds);
@@ -93,7 +94,7 @@ bool ConversationController::update(float dt, bool confirm_pressed, Camera& came
   const CameraPose previous_pose = pose_from_camera(camera);
   dt = std::max(0.0f, std::min(dt, 0.10f));
 
-  if ((phase_ == Phase::EaseIn || phase_ == Phase::Talking) && confirm_pressed) {
+  if ((phase_ == Phase::EaseIn || phase_ == Phase::Talking) && confirm_pressed && allow_confirm_skip_) {
     begin_return(camera, true);
   }
 
@@ -130,6 +131,7 @@ bool ConversationController::update(float dt, bool confirm_pressed, Camera& came
       phase_ = Phase::Idle;
       speaker_id_ = 0;
       show_subtitle_ = false;
+      allow_confirm_skip_ = true;
     }
   }
 

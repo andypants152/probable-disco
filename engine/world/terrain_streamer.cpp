@@ -71,6 +71,8 @@ bool TerrainStreamer::update(const TerrainGenerator& generator, Vec3 focus_posit
   chunk_changed_ = next_center_chunk_x != center_chunk_x_ || next_center_chunk_z != center_chunk_z_;
   if (!chunk_changed_) {
     stats_.rebuilt_chunks = 0;
+    stats_.rebuilt_surface_columns = 0;
+    stats_.skipped_terrain_voxel_samples = 0;
     return false;
   }
 
@@ -111,6 +113,9 @@ void TerrainStreamer::rebuild(const TerrainGenerator& generator) {
                                     kChunkSize,
                                     visual_detail_level);
       ++stats_.rebuilt_chunks;
+      stats_.rebuilt_surface_columns += static_cast<std::size_t>(kChunkSize * kChunkSize);
+      stats_.skipped_terrain_voxel_samples +=
+          static_cast<std::size_t>((kChunkSize + 2) * (kChunkSize + 2) * (kChunkSize - 1));
       if (cached != chunk_cache_.end()) {
         *cached = std::move(chunk);
       } else {
