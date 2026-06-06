@@ -222,6 +222,14 @@ void build_subtitle_batch(QuadBatch& batch,
                           int framebuffer_width,
                           int framebuffer_height) {
   batch.clear();
+  append_subtitle_batch(batch, atlas, subtitle, framebuffer_width, framebuffer_height);
+}
+
+void append_subtitle_batch(QuadBatch& batch,
+                           const BitmapFontAtlas& atlas,
+                           const SubtitleFrame& subtitle,
+                           int framebuffer_width,
+                           int framebuffer_height) {
   if (!subtitle.visible || subtitle.text == nullptr || subtitle.text[0] == '\0' || subtitle.alpha <= 0.0f) {
     return;
   }

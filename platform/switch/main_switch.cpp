@@ -133,8 +133,24 @@ int main(int, char**) {
     app.frame(renderer, input);
 #if defined(VOXEL_SWITCH_TIMING)
     static int profile_frame = 0;
+    static int dynamic_rebuild_frames = 0;
+    static int dynamic_upload_frames = 0;
+    static int squirrel_structural_frames = 0;
+    static int squirrel_animation_frames = 0;
+    static int squirrel_animation_due_frames = 0;
+    static int gameplay_structural_frames = 0;
+    static int gameplay_animation_due_frames = 0;
+    static int terrain_rebuilt_chunks = 0;
+    const auto& app_stats = app.frame_stats();
+    dynamic_rebuild_frames += app_stats.dynamic_mesh_rebuilt ? 1 : 0;
+    dynamic_upload_frames += app_stats.dynamic_mesh_uploaded ? 1 : 0;
+    squirrel_structural_frames += app_stats.squirrel_structural_changed ? 1 : 0;
+    squirrel_animation_frames += app_stats.squirrel_animation_changed ? 1 : 0;
+    squirrel_animation_due_frames += app_stats.squirrel_animation_upload_due ? 1 : 0;
+    gameplay_structural_frames += app_stats.gameplay_structural_changed ? 1 : 0;
+    gameplay_animation_due_frames += app_stats.gameplay_animation_upload_due ? 1 : 0;
+    terrain_rebuilt_chunks += app_stats.terrain_rebuilt_chunks;
     if ((++profile_frame % 60) == 0) {
-      const auto& app_stats = app.frame_stats();
       const auto& stats = renderer.frame_stats();
       std::printf("frame %.2fms fps %.1f update %.2fms rebuild world %.2fms fox %.2fms scene %.2fms upload %.2fms render %.2fms\n",
                   ns_to_ms(app_stats.total_ns),
@@ -155,7 +171,22 @@ int main(int, char**) {
                   ns_to_ms(stats.present_ns),
                   ns_to_ms(stats.static_upload_ns),
                   ns_to_ms(stats.dynamic_upload_ns));
+      std::printf("dynamic rebuild/upload %d/%d of 60 squirrel structural %d anim %d anim_upload_due %d gameplay structural %d anim_upload_due %d\n",
+                  dynamic_rebuild_frames,
+                  dynamic_upload_frames,
+                  squirrel_structural_frames,
+                  squirrel_animation_frames,
+                  squirrel_animation_due_frames,
+                  gameplay_structural_frames,
+                  gameplay_animation_due_frames);
       std::printf("verts %zu tris %zu\n", stats.vertices, stats.triangles);
+      std::printf("terrain chunks visible/rebuilt60 %d/%d verts %zu tris %zu largest chunk verts %zu tris %zu\n",
+                  app_stats.terrain_visible_chunks,
+                  terrain_rebuilt_chunks,
+                  app_stats.terrain_vertices,
+                  app_stats.terrain_triangles,
+                  app_stats.terrain_largest_chunk_vertices,
+                  app_stats.terrain_largest_chunk_triangles);
       std::printf("loop carried %d lantern %d deposit %d/%d fireflies %d lights %d/%d objective %.2f glow %.2f lantern %.2f radius %.2f\n",
                   app_stats.carried_fireflies,
                   app_stats.active_lantern_index,
@@ -168,6 +199,14 @@ int main(int, char**) {
                   app_stats.firefly_glow_intensity,
                   app_stats.lantern_light_intensity,
                   app_stats.lantern_light_radius);
+      dynamic_rebuild_frames = 0;
+      dynamic_upload_frames = 0;
+      squirrel_structural_frames = 0;
+      squirrel_animation_frames = 0;
+      squirrel_animation_due_frames = 0;
+      gameplay_structural_frames = 0;
+      gameplay_animation_due_frames = 0;
+      terrain_rebuilt_chunks = 0;
     }
 #endif
   }

@@ -45,14 +45,20 @@ class SquirrelQuest {
     float seconds = 3.0f;
   };
 
+  struct UpdateResult {
+    bool structural_changed = false;
+    bool animation_changed = false;
+    bool lights_changed = false;
+  };
+
   void init(const TerrainGenerator& generator, const FireflyLoop& firefly_loop);
-  bool update(float dt,
-              const TerrainGenerator& generator,
-              const FireflyLoop& firefly_loop,
-              Vec3 fox_position,
-              bool allow_dialogue);
+  UpdateResult update(float dt,
+                      const TerrainGenerator& generator,
+                      const FireflyLoop& firefly_loop,
+                      Vec3 fox_position,
+                      bool allow_dialogue);
   bool conversation_request(Vec3 fox_position, ConversationRequest& request);
-  void set_talking_squirrel(std::uint32_t squirrel_id, bool talking);
+  bool set_talking_squirrel(std::uint32_t squirrel_id, bool talking);
 
   void append_dynamic_mesh(Mesh& mesh, Vec3 fox_position) const;
   void append_gameplay_lights(std::array<GameplayLight, kMaxGameplayLights>& lights,

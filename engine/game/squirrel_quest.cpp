@@ -32,8 +32,8 @@ constexpr float kSquirrelApproachDistance = 17.5f;
 constexpr float kSquirrelIdleSoundRadius = 14.0f;
 constexpr float kSquirrelScamperSoundRadius = 30.0f;
 constexpr int kAcornSlotsPerLitLantern = 14;
-constexpr int kMaxVisibleSquirrels = 18;
-constexpr int kMaxVisibleAcorns = 46;
+constexpr int kMaxVisibleSquirrels = 6;
+constexpr int kMaxVisibleAcorns = 20;
 constexpr int kWorldDressingStep = 6;
 constexpr float kMoonClearingX = 42.0f;
 constexpr float kMoonClearingZ = -104.0f;
@@ -469,19 +469,21 @@ void SquirrelQuest::init(const TerrainGenerator& generator, const FireflyLoop& f
   refresh_nearby(generator, firefly_loop, {});
 }
 
-bool SquirrelQuest::update(float dt,
-                           const TerrainGenerator& generator,
-                           const FireflyLoop& firefly_loop,
-                           Vec3 fox_position,
-                           bool allow_dialogue) {
-  bool changed = false;
+SquirrelQuest::UpdateResult SquirrelQuest::update(float dt,
+                                                  const TerrainGenerator& generator,
+                                                  const FireflyLoop& firefly_loop,
+                                                  Vec3 fox_position,
+                                                  bool allow_dialogue) {
+  UpdateResult result = {};
   dt = std::max(0.0f, std::min(dt, 0.10f));
   refresh_timer_ -= dt;
   if (refresh_timer_ <= 0.0f) {
     const std::size_t squirrel_count = squirrels_.size();
     const std::size_t acorn_count = acorns_.size();
     refresh_nearby(generator, firefly_loop, fox_position);
-    changed = changed || squirrel_count != squirrels_.size() || acorn_count != acorns_.size();
+    result.structural_changed = result.structural_changed ||
+        squirrel_count != squirrels_.size() ||
+        acorn_count != acorns_.size();
     refresh_timer_ = 0.85f;
   }
 
@@ -560,6 +562,7 @@ bool SquirrelQuest::update(float dt,
       if (audio_ready_for_gameplay_sound()) {
         audio_play_squirrel_alert();
       }
+      result.structural_changed = true;
     }
     if ((allow_dialogue || progress.approach_started) &&
         !progress.completed &&
@@ -580,8 +583,14 @@ bool SquirrelQuest::update(float dt,
       if (audio_ready_for_gameplay_sound()) {
         audio_play_squirrel_idle();
       }
+      result.structural_changed = true;
     }
-    changed = changed || length(previous_position - squirrel.position) > 0.0005f || previous_happy != squirrel.happy_timer;
+    if (length(previous_position - squirrel.position) > 0.0005f || previous_happy != squirrel.happy_timer) {
+      result.animation_changed = true;
+    }
+    if (previous_happy != squirrel.happy_timer) {
+      result.lights_changed = true;
+    }
   }
 
   const std::uint32_t pickup_squirrel_id = best_incomplete_squirrel_id(fox_position);
@@ -596,7 +605,7 @@ bool SquirrelQuest::update(float dt,
       acorn.phase += dt;
       const float bob = std::sin(acorn.phase * 2.3f) * 0.10f;
       acorn.position = acorn.home + Vec3{0.0f, bob, 0.0f};
-      changed = true;
+      result.animation_changed = true;
     }
     if (pickup_squirrel_id != 0 && distance <= kAcornPickupRadius) {
       QuestProgress& progress = progress_for(pickup_squirrel_id);
@@ -606,7 +615,7 @@ bool SquirrelQuest::update(float dt,
         ++carried_acorns_;
         ++progress.collected_acorns;
         active_squirrel_id_ = pickup_squirrel_id;
-        changed = true;
+        result.structural_changed = true;
         if (audio_ready_for_gameplay_sound()) {
           audio_play_acorn_pickup();
         }
@@ -624,9 +633,12 @@ bool SquirrelQuest::update(float dt,
             completion_position = squirrel.home;
             completion_squirrel_id = squirrel.id;
             completion_lantern_index = squirrel.lantern_index;
+            result.animation_changed = true;
+            result.lights_changed = true;
             break;
           }
           remove_surplus_acorns_for_lantern(completion_lantern_index);
+          result.structural_changed = true;
           CompletionEvent event = {};
           event.position = completion_position;
           event.squirrel_position = completion_position;
@@ -644,7 +656,7 @@ bool SquirrelQuest::update(float dt,
     }
   }
 
-  return changed;
+  return result;
 }
 
 bool SquirrelQuest::conversation_request(Vec3 fox_position, ConversationRequest& request) {
@@ -675,8 +687,13 @@ bool SquirrelQuest::conversation_request(Vec3 fox_position, ConversationRequest&
   return true;
 }
 
-void SquirrelQuest::set_talking_squirrel(std::uint32_t squirrel_id, bool talking) {
-  talking_squirrel_id_ = talking ? squirrel_id : 0;
+bool SquirrelQuest::set_talking_squirrel(std::uint32_t squirrel_id, bool talking) {
+  const std::uint32_t next_talking_squirrel_id = talking ? squirrel_id : 0;
+  if (talking_squirrel_id_ == next_talking_squirrel_id) {
+    return false;
+  }
+  talking_squirrel_id_ = next_talking_squirrel_id;
+  return true;
 }
 
 void SquirrelQuest::append_dynamic_mesh(Mesh& mesh, Vec3 fox_position) const {

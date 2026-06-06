@@ -18,6 +18,8 @@ namespace {
 constexpr float kNormalizedLookPixelsPerSecond = 1800.0f;
 constexpr float kCameraDistance = 13.0f;
 constexpr float kCameraTargetHeight = 1.35f;
+constexpr float kSquirrelAnimationUploadInterval = 0.10f;
+constexpr float kGameplayAnimationUploadInterval = 0.05f;
 
 using Clock = std::chrono::steady_clock;
 
@@ -62,6 +64,7 @@ bool App::init(Renderer& renderer) {
   firefly_loop_.init(generator_);
   squirrel_quest_.init(generator_, firefly_loop_);
   rebuild_dynamic_mesh();
+  render_frame_commands_.commands.reserve(3);
 
   if (!renderer.init()) {
     return false;
@@ -93,10 +96,15 @@ void App::frame(Renderer& renderer, const CameraInput& input) {
   }
 
   frame_stats_ = {};
+  renderer.begin_frame_stats();
   const auto frame_start = Clock::now();
   const auto update_start = Clock::now();
   const bool confirm_pressed = input.action_pressed || (input.interact && !previous_interact_down_);
   bool conversation_started = false;
+  squirrel_animation_upload_timer_ =
+      std::max(0.0f, squirrel_animation_upload_timer_ - std::max(0.0f, input.delta_time));
+  gameplay_animation_upload_timer_ =
+      std::max(0.0f, gameplay_animation_upload_timer_ - std::max(0.0f, input.delta_time));
 
   CameraInput gameplay_input = input;
   if (conversation_controller_.locks_input()) {
@@ -124,17 +132,29 @@ void App::frame(Renderer& renderer, const CameraInput& input) {
                                                  generator_,
                                                  fox_position,
                                                  gameplay_input.interact || gameplay_input.action_pressed);
+  const int previous_carried_fireflies = firefly_loop_.carried_fireflies();
+  const int previous_active_lantern_index = firefly_loop_.active_lantern_index();
+  const int previous_deposited_fireflies = firefly_loop_.deposited_fireflies();
+  const int previous_active_fireflies = firefly_loop_.active_firefly_count();
   bool gameplay_changed = firefly_loop_.update(gameplay_input.delta_time, generator_, fox_position, fox_heading);
-  const bool squirrel_changed = squirrel_quest_.update(gameplay_input.delta_time,
-                                                       generator_,
-                                                       firefly_loop_,
-                                                       fox_position,
-                                                       !conversation_controller_.active() && !conversation_started);
+  bool gameplay_structural_changed =
+      previous_carried_fireflies != firefly_loop_.carried_fireflies() ||
+      previous_active_lantern_index != firefly_loop_.active_lantern_index() ||
+      previous_deposited_fireflies != firefly_loop_.deposited_fireflies() ||
+      previous_active_fireflies != firefly_loop_.active_firefly_count();
+  const SquirrelQuest::UpdateResult squirrel_update = squirrel_quest_.update(
+      gameplay_input.delta_time,
+      generator_,
+      firefly_loop_,
+      fox_position,
+      !conversation_controller_.active() && !conversation_started);
+  bool squirrel_animation_changed = squirrel_update.animation_changed;
   OwlEncounter::DialogueEvent owl_dialogue = {};
   if (owl_encounter_.consume_dialogue_event(owl_dialogue)) {
     if (owl_dialogue.line == 1 && !firefly_loop_.fireflies_unlocked()) {
       firefly_loop_.unlock_fireflies(generator_);
       gameplay_changed = true;
+      gameplay_structural_changed = true;
     }
     ConversationController::Request request = {};
     request.speaker_position = owl_encounter_.position();
@@ -222,7 +242,9 @@ void App::frame(Renderer& renderer, const CameraInput& input) {
   const bool conversation_camera_changed = conversation_controller_.active()
       ? conversation_controller_.update(input.delta_time, confirm_pressed && !conversation_started, camera_)
       : false;
-  squirrel_quest_.set_talking_squirrel(conversation_controller_.speaker_id(), conversation_controller_.talking());
+  const bool squirrel_talking_changed =
+      squirrel_quest_.set_talking_squirrel(conversation_controller_.speaker_id(), conversation_controller_.talking());
+  squirrel_animation_changed = squirrel_animation_changed || squirrel_talking_changed;
   if (!conversation_controller_.active()) {
     update_camera(gameplay_input);
   }
@@ -257,6 +279,10 @@ void App::frame(Renderer& renderer, const CameraInput& input) {
   frame_stats_.distance_to_objective = horizontal_distance(fox_position, firefly_loop_.objective_position(fox_position));
   frame_stats_.update_ns = elapsed_ns(update_start, Clock::now());
   frame_stats_.fox_moved = fox_moved;
+  frame_stats_.squirrel_structural_changed = squirrel_update.structural_changed;
+  frame_stats_.squirrel_animation_changed = squirrel_animation_changed;
+  frame_stats_.squirrel_lights_changed = squirrel_update.lights_changed;
+  frame_stats_.gameplay_structural_changed = gameplay_structural_changed;
 
   const auto world_rebuild_start = Clock::now();
   const bool chunk_changed = terrain_streamer_.update(generator_, fox_position);
@@ -264,6 +290,33 @@ void App::frame(Renderer& renderer, const CameraInput& input) {
   if (chunk_changed) {
     frame_stats_.world_rebuild_ns = elapsed_ns(world_rebuild_start, Clock::now());
   }
+  const TerrainStreamer::Stats& terrain_stats = terrain_streamer_.stats();
+  frame_stats_.terrain_visible_chunks = terrain_stats.visible_chunks;
+  frame_stats_.terrain_rebuilt_chunks = terrain_stats.rebuilt_chunks;
+  frame_stats_.terrain_vertices = terrain_stats.visible_vertices;
+  frame_stats_.terrain_triangles = terrain_stats.visible_triangles;
+  frame_stats_.terrain_largest_chunk_vertices = terrain_stats.largest_chunk_vertices;
+  frame_stats_.terrain_largest_chunk_triangles = terrain_stats.largest_chunk_triangles;
+
+  const bool squirrel_animation_upload_due =
+      squirrel_animation_changed && squirrel_animation_upload_timer_ <= 0.0f;
+  const bool squirrel_mesh_changed =
+      squirrel_update.structural_changed || squirrel_animation_upload_due;
+  const bool gameplay_animation_upload_due =
+      gameplay_changed && gameplay_animation_upload_timer_ <= 0.0f;
+  const bool gameplay_mesh_changed =
+      gameplay_structural_changed || gameplay_animation_upload_due;
+  const bool dynamic_mesh_update_needed =
+      fox_moved ||
+      owl_changed ||
+      gameplay_mesh_changed ||
+      squirrel_mesh_changed ||
+      conversation_started ||
+      conversation_camera_changed ||
+      !squirrel_completion_events_.empty() ||
+      chunk_changed;
+  frame_stats_.squirrel_animation_upload_due = squirrel_animation_upload_due;
+  frame_stats_.gameplay_animation_upload_due = gameplay_animation_upload_due;
 
   if (renderer.supports_separate_meshes()) {
     if (chunk_changed) {
@@ -271,32 +324,46 @@ void App::frame(Renderer& renderer, const CameraInput& input) {
       renderer.upload_static_mesh(terrain_streamer_.mesh());
       frame_stats_.upload_ns += elapsed_ns(upload_start, Clock::now());
     }
-    if (fox_moved || owl_changed || gameplay_changed || squirrel_changed || conversation_started ||
-        conversation_camera_changed || !squirrel_completion_events_.empty() || chunk_changed) {
+    if (dynamic_mesh_update_needed) {
       const auto fox_rebuild_start = Clock::now();
       if (fox_moved || chunk_changed) {
         rebuild_fox_mesh();
       }
       rebuild_dynamic_mesh();
+      frame_stats_.dynamic_mesh_rebuilt = true;
       frame_stats_.fox_rebuild_ns = elapsed_ns(fox_rebuild_start, Clock::now());
       const auto upload_start = Clock::now();
       renderer.upload_dynamic_mesh(dynamic_mesh_);
+      frame_stats_.dynamic_mesh_uploaded = true;
       frame_stats_.upload_ns += elapsed_ns(upload_start, Clock::now());
+      if (gameplay_changed) {
+        gameplay_animation_upload_timer_ = kGameplayAnimationUploadInterval;
+      }
+      if (squirrel_update.structural_changed || squirrel_animation_changed) {
+        squirrel_animation_upload_timer_ = kSquirrelAnimationUploadInterval;
+      }
     }
-  } else if (fox_moved || owl_changed || gameplay_changed || squirrel_changed || conversation_started ||
-             conversation_camera_changed || !squirrel_completion_events_.empty() || chunk_changed) {
+  } else if (dynamic_mesh_update_needed) {
     const auto fox_rebuild_start = Clock::now();
     if (fox_moved || chunk_changed) {
       rebuild_fox_mesh();
     }
     rebuild_dynamic_mesh();
+    frame_stats_.dynamic_mesh_rebuilt = true;
     frame_stats_.fox_rebuild_ns = elapsed_ns(fox_rebuild_start, Clock::now());
     const auto scene_rebuild_start = Clock::now();
     rebuild_scene_mesh();
     frame_stats_.scene_rebuild_ns = elapsed_ns(scene_rebuild_start, Clock::now());
     const auto upload_start = Clock::now();
     renderer.upload_mesh(mesh_);
+    frame_stats_.dynamic_mesh_uploaded = true;
     frame_stats_.upload_ns = elapsed_ns(upload_start, Clock::now());
+    if (gameplay_changed) {
+      gameplay_animation_upload_timer_ = kGameplayAnimationUploadInterval;
+    }
+    if (squirrel_update.structural_changed || squirrel_animation_changed) {
+      squirrel_animation_upload_timer_ = kSquirrelAnimationUploadInterval;
+    }
   }
 
   const auto render_start = Clock::now();

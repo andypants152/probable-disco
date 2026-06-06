@@ -1,8 +1,8 @@
 #include "gles_renderer.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cstdio>
-#include <vector>
 
 #include "math/mat4.h"
 #include "render/render_types.h"
@@ -50,8 +50,8 @@ in vec3 v_micro_position;
 in float v_depth;
 
 uniform int u_light_count;
-uniform vec4 u_light_position_radius[12];
-uniform vec4 u_light_color_intensity[12];
+uniform vec4 u_light_position_radius[6];
+uniform vec4 u_light_color_intensity[6];
 
 out vec4 frag_color;
 
@@ -78,7 +78,7 @@ void main() {
   float glow = max(dot(normal, glow_dir), 0.0);
   vec3 light = mix(moon_ground, moon_sky, hemi) * 0.38 + glow_color * glow * 0.24 + vec3(0.035, 0.045, 0.040);
   vec3 local_light = vec3(0.0);
-  for (int i = 0; i < 12; ++i) {
+  for (int i = 0; i < 6; ++i) {
     if (i >= u_light_count) {
       break;
     }
@@ -92,7 +92,8 @@ void main() {
   }
   vec3 outline = vec3(0.015, 0.020, 0.018);
   vec3 fog_color = vec3(0.114, 0.169, 0.153);
-  float fog = clamp(1.0 - exp(-0.045 * 0.045 * v_depth * v_depth), 0.0, 0.985);
+  float fog_depth = v_depth * 0.042;
+  float fog = clamp((fog_depth * fog_depth) / (1.0 + fog_depth * fog_depth), 0.0, 0.985);
   float emissive = clamp(1.0 - v_color.a, 0.0, 1.0);
   vec3 local_visible = local_light * (1.0 - emissive * 0.70);
   vec3 fill = v_color.rgb * light + v_color.rgb * local_visible * 1.15 + local_visible * 0.16;
@@ -147,6 +148,12 @@ void decode_color(PackedColor packed, unsigned char* out) {
   out[3] = static_cast<unsigned char>(packed & 0xffu);
 }
 
+using Clock = std::chrono::steady_clock;
+
+std::uint64_t elapsed_ns(Clock::time_point start, Clock::time_point end) {
+  return static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count());
+}
+
 }  // namespace
 
 bool GlesRenderer::init() {
@@ -166,32 +173,42 @@ bool GlesRenderer::init() {
   return true;
 }
 
+void GlesRenderer::begin_frame_stats() {
+  frame_stats_ = {};
+}
+
 void GlesRenderer::upload_mesh(const Mesh& mesh) {
   make_context_current();
-  destroy_buffers();
+  const auto upload_start = Clock::now();
   upload_buffer(static_mesh_, mesh, GL_STATIC_DRAW);
+  dynamic_mesh_.index_count = 0;
+  dynamic_mesh_.vertex_count = 0;
+  frame_stats_.static_upload_ns = elapsed_ns(upload_start, Clock::now());
 }
 
 void GlesRenderer::upload_static_mesh(const Mesh& mesh) {
   make_context_current();
-  destroy_buffer(static_mesh_);
+  const auto upload_start = Clock::now();
   upload_buffer(static_mesh_, mesh, GL_STATIC_DRAW);
+  frame_stats_.static_upload_ns = elapsed_ns(upload_start, Clock::now());
 }
 
 void GlesRenderer::upload_dynamic_mesh(const Mesh& mesh) {
   make_context_current();
-  destroy_buffer(dynamic_mesh_);
+  const auto upload_start = Clock::now();
   upload_buffer(dynamic_mesh_, mesh, GL_DYNAMIC_DRAW);
+  frame_stats_.dynamic_upload_ns = elapsed_ns(upload_start, Clock::now());
 }
 
 void GlesRenderer::upload_buffer(MeshBuffer& buffer, const Mesh& mesh, GLenum usage) {
   if (mesh.indices.empty() || mesh.vertices.empty()) {
     buffer.index_count = 0;
+    buffer.vertex_count = 0;
     return;
   }
 
-  std::vector<GpuVertex> gpu_vertices;
-  gpu_vertices.reserve(mesh.vertices.size());
+  mesh_vertices_.clear();
+  mesh_vertices_.reserve(mesh.vertices.size());
 
   for (std::size_t i = 0; i < mesh.vertices.size(); ++i) {
     const Vec3 position = mesh.vertices[i];
@@ -210,26 +227,46 @@ void GlesRenderer::upload_buffer(MeshBuffer& buffer, const Mesh& mesh, GLenum us
     vertex.micro_position[0] = micro_position.x;
     vertex.micro_position[1] = micro_position.y;
     vertex.micro_position[2] = micro_position.z;
-    gpu_vertices.push_back(vertex);
+    mesh_vertices_.push_back(vertex);
+  }
+
+  ensure_mesh_buffer(buffer);
+
+  const GLsizeiptr vertex_bytes = static_cast<GLsizeiptr>(mesh_vertices_.size() * sizeof(GpuVertex));
+  const GLsizeiptr index_bytes = static_cast<GLsizeiptr>(mesh.indices.size() * sizeof(Index));
+  glBindVertexArray(buffer.vao);
+  glBindBuffer(GL_ARRAY_BUFFER, buffer.vertex_buffer);
+  if (vertex_bytes > buffer.vertex_capacity_bytes) {
+    glBufferData(GL_ARRAY_BUFFER, vertex_bytes, mesh_vertices_.data(), usage);
+    buffer.vertex_capacity_bytes = vertex_bytes;
+  } else {
+    glBufferSubData(GL_ARRAY_BUFFER, 0, vertex_bytes, mesh_vertices_.data());
+  }
+  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, buffer.index_buffer);
+  if (index_bytes > buffer.index_capacity_bytes) {
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, index_bytes, mesh.indices.data(), usage);
+    buffer.index_capacity_bytes = index_bytes;
+  } else {
+    glBufferSubData(GL_ELEMENT_ARRAY_BUFFER, 0, index_bytes, mesh.indices.data());
+  }
+
+  buffer.index_count = static_cast<GLsizei>(mesh.indices.size());
+  buffer.vertex_count = mesh.vertices.size();
+  glBindVertexArray(0);
+}
+
+void GlesRenderer::ensure_mesh_buffer(MeshBuffer& buffer) {
+  if (buffer.vao != 0) {
+    return;
   }
 
   glGenVertexArrays(1, &buffer.vao);
-  glBindVertexArray(buffer.vao);
-
   glGenBuffers(1, &buffer.vertex_buffer);
-  glBindBuffer(GL_ARRAY_BUFFER, buffer.vertex_buffer);
-  glBufferData(GL_ARRAY_BUFFER,
-               static_cast<GLsizeiptr>(gpu_vertices.size() * sizeof(GpuVertex)),
-               gpu_vertices.data(),
-               usage);
-
   glGenBuffers(1, &buffer.index_buffer);
-  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, buffer.index_buffer);
-  glBufferData(GL_ELEMENT_ARRAY_BUFFER,
-               static_cast<GLsizeiptr>(mesh.indices.size() * sizeof(Index)),
-               mesh.indices.data(),
-               usage);
 
+  glBindVertexArray(buffer.vao);
+  glBindBuffer(GL_ARRAY_BUFFER, buffer.vertex_buffer);
+  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, buffer.index_buffer);
   glEnableVertexAttribArray(0);
   glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(GpuVertex),
                         reinterpret_cast<void*>(offsetof(GpuVertex, position)));
@@ -242,8 +279,6 @@ void GlesRenderer::upload_buffer(MeshBuffer& buffer, const Mesh& mesh, GLenum us
   glEnableVertexAttribArray(3);
   glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, sizeof(GpuVertex),
                         reinterpret_cast<void*>(offsetof(GpuVertex, micro_position)));
-
-  buffer.index_count = static_cast<GLsizei>(mesh.indices.size());
   glBindVertexArray(0);
 }
 
@@ -252,14 +287,17 @@ void GlesRenderer::render_frame(const RenderFrame& frame) {
     return;
   }
 
+  const auto frame_start = Clock::now();
   make_context_current();
 
+  const auto acquire_start = Clock::now();
   int width = 1;
   int height = 1;
   framebuffer_size(width, height);
   width = std::max(1, width);
   height = std::max(1, height);
   glViewport(0, 0, width, height);
+  frame_stats_.acquire_ns = elapsed_ns(acquire_start, Clock::now());
 
   light_count_ = 0;
   for (int i = 0; i < frame.light_count && light_count_ < kMaxRendererGameplayLights; ++i) {
@@ -282,14 +320,23 @@ void GlesRenderer::render_frame(const RenderFrame& frame) {
   const Mat4 view = frame.camera.view_matrix();
   const Mat4 projection = frame.camera.projection_matrix();
 
+  const auto clear_start = Clock::now();
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+  frame_stats_.clear_ns = elapsed_ns(clear_start, Clock::now());
+
+  const auto command_start = Clock::now();
   glUseProgram(program_);
   glUniformMatrix4fv(view_uniform_, 1, GL_FALSE, view.m);
   glUniformMatrix4fv(projection_uniform_, 1, GL_FALSE, projection.m);
   glUniform1i(light_count_uniform_, light_count_);
   glUniform4fv(light_position_radius_uniform_, kMaxRendererGameplayLights, light_position_radius_);
   glUniform4fv(light_color_intensity_uniform_, kMaxRendererGameplayLights, light_color_intensity_);
+  frame_stats_.command_record_ns = elapsed_ns(command_start, Clock::now());
 
+  const auto draw_start = Clock::now();
+  frame_stats_.vertices = static_mesh_.vertex_count + dynamic_mesh_.vertex_count;
+  frame_stats_.triangles =
+      static_cast<std::size_t>(static_mesh_.index_count + dynamic_mesh_.index_count) / 3u;
   for (const RenderCommand& command : frame.commands) {
     switch (command.type) {
       case RenderCommandType::DrawStaticMesh:
@@ -299,18 +346,17 @@ void GlesRenderer::render_frame(const RenderFrame& frame) {
         draw_buffer(dynamic_mesh_);
         break;
       case RenderCommandType::DrawSubtitle:
+        overlay_batch_.clear();
         if (frame.subtitle != nullptr) {
-          build_subtitle_batch(overlay_batch_, font_atlas_, *frame.subtitle, width, height);
-          upload_overlay_batch(overlay_batch_);
-          draw_overlay_batch(width, height);
+          append_subtitle_batch(overlay_batch_, font_atlas_, *frame.subtitle, width, height);
         }
         if (frame.hud != nullptr) {
-          build_subtitle_batch(overlay_batch_, font_atlas_, *frame.hud, width, height);
-          upload_overlay_batch(overlay_batch_);
-          draw_overlay_batch(width, height);
+          append_subtitle_batch(overlay_batch_, font_atlas_, *frame.hud, width, height);
         }
         if (frame.fps != nullptr) {
-          build_subtitle_batch(overlay_batch_, font_atlas_, *frame.fps, width, height);
+          append_subtitle_batch(overlay_batch_, font_atlas_, *frame.fps, width, height);
+        }
+        if (!overlay_batch_.empty()) {
           upload_overlay_batch(overlay_batch_);
           draw_overlay_batch(width, height);
         }
@@ -319,7 +365,12 @@ void GlesRenderer::render_frame(const RenderFrame& frame) {
   }
 
   glBindVertexArray(0);
+  frame_stats_.draw_ns = elapsed_ns(draw_start, Clock::now());
+
+  const auto present_start = Clock::now();
   present();
+  frame_stats_.present_ns = elapsed_ns(present_start, Clock::now());
+  frame_stats_.total_ns = elapsed_ns(frame_start, Clock::now());
 }
 
 void GlesRenderer::shutdown() {
@@ -405,6 +456,7 @@ bool GlesRenderer::create_overlay_program() {
   }
 
   overlay_viewport_uniform_ = glGetUniformLocation(overlay_program_, "u_viewport_size");
+  overlay_texture_uniform_ = glGetUniformLocation(overlay_program_, "u_texture");
   return true;
 }
 
@@ -434,8 +486,8 @@ void GlesRenderer::upload_overlay_batch(const QuadBatch& batch) {
     return;
   }
 
-  std::vector<OverlayVertex> vertices;
-  vertices.reserve(batch.vertices().size());
+  overlay_vertices_.clear();
+  overlay_vertices_.reserve(batch.vertices().size());
   for (const QuadVertex& source : batch.vertices()) {
     OverlayVertex vertex = {};
     vertex.position[0] = source.position[0];
@@ -443,27 +495,45 @@ void GlesRenderer::upload_overlay_batch(const QuadBatch& batch) {
     vertex.tex_coord[0] = source.tex_coord[0];
     vertex.tex_coord[1] = source.tex_coord[1];
     decode_color(source.color, vertex.color);
-    vertices.push_back(vertex);
+    overlay_vertices_.push_back(vertex);
   }
 
-  if (overlay_vao_ == 0) {
-    glGenVertexArrays(1, &overlay_vao_);
-    glGenBuffers(1, &overlay_vertex_buffer_);
-    glGenBuffers(1, &overlay_index_buffer_);
+  ensure_overlay_buffer();
+
+  const GLsizeiptr vertex_bytes = static_cast<GLsizeiptr>(overlay_vertices_.size() * sizeof(OverlayVertex));
+  const GLsizeiptr index_bytes = static_cast<GLsizeiptr>(batch.indices().size() * sizeof(Index));
+  glBindVertexArray(overlay_vao_);
+  glBindBuffer(GL_ARRAY_BUFFER, overlay_vertex_buffer_);
+  if (vertex_bytes > overlay_vertex_capacity_bytes_) {
+    glBufferData(GL_ARRAY_BUFFER, vertex_bytes, overlay_vertices_.data(), GL_DYNAMIC_DRAW);
+    overlay_vertex_capacity_bytes_ = vertex_bytes;
+  } else {
+    glBufferSubData(GL_ARRAY_BUFFER, 0, vertex_bytes, overlay_vertices_.data());
   }
+  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, overlay_index_buffer_);
+  if (index_bytes > overlay_index_capacity_bytes_) {
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, index_bytes, batch.indices().data(), GL_DYNAMIC_DRAW);
+    overlay_index_capacity_bytes_ = index_bytes;
+  } else {
+    glBufferSubData(GL_ELEMENT_ARRAY_BUFFER, 0, index_bytes, batch.indices().data());
+  }
+
+  overlay_index_count_ = static_cast<GLsizei>(batch.indices().size());
+  glBindVertexArray(0);
+}
+
+void GlesRenderer::ensure_overlay_buffer() {
+  if (overlay_vao_ != 0) {
+    return;
+  }
+
+  glGenVertexArrays(1, &overlay_vao_);
+  glGenBuffers(1, &overlay_vertex_buffer_);
+  glGenBuffers(1, &overlay_index_buffer_);
 
   glBindVertexArray(overlay_vao_);
   glBindBuffer(GL_ARRAY_BUFFER, overlay_vertex_buffer_);
-  glBufferData(GL_ARRAY_BUFFER,
-               static_cast<GLsizeiptr>(vertices.size() * sizeof(OverlayVertex)),
-               vertices.data(),
-               GL_DYNAMIC_DRAW);
   glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, overlay_index_buffer_);
-  glBufferData(GL_ELEMENT_ARRAY_BUFFER,
-               static_cast<GLsizeiptr>(batch.indices().size() * sizeof(Index)),
-               batch.indices().data(),
-               GL_DYNAMIC_DRAW);
-
   glEnableVertexAttribArray(0);
   glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(OverlayVertex),
                         reinterpret_cast<void*>(offsetof(OverlayVertex, position)));
@@ -473,8 +543,6 @@ void GlesRenderer::upload_overlay_batch(const QuadBatch& batch) {
   glEnableVertexAttribArray(2);
   glVertexAttribPointer(2, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(OverlayVertex),
                         reinterpret_cast<void*>(offsetof(OverlayVertex, color)));
-
-  overlay_index_count_ = static_cast<GLsizei>(batch.indices().size());
   glBindVertexArray(0);
 }
 
@@ -499,7 +567,7 @@ void GlesRenderer::draw_overlay_batch(int framebuffer_width, int framebuffer_hei
   glUniform2f(overlay_viewport_uniform_, static_cast<float>(framebuffer_width), static_cast<float>(framebuffer_height));
   glActiveTexture(GL_TEXTURE0);
   glBindTexture(GL_TEXTURE_2D, font_texture_);
-  glUniform1i(glGetUniformLocation(overlay_program_, "u_texture"), 0);
+  glUniform1i(overlay_texture_uniform_, 0);
   glBindVertexArray(overlay_vao_);
   glDrawElements(GL_TRIANGLES, overlay_index_count_, GL_UNSIGNED_INT, nullptr);
   glDisable(GL_BLEND);
@@ -519,7 +587,10 @@ void GlesRenderer::destroy_buffer(MeshBuffer& buffer) {
     glDeleteVertexArrays(1, &buffer.vao);
     buffer.vao = 0;
   }
+  buffer.vertex_capacity_bytes = 0;
+  buffer.index_capacity_bytes = 0;
   buffer.index_count = 0;
+  buffer.vertex_count = 0;
 }
 
 void GlesRenderer::destroy_buffers() {
@@ -553,6 +624,8 @@ void GlesRenderer::destroy_gl_resources() {
     glDeleteVertexArrays(1, &overlay_vao_);
     overlay_vao_ = 0;
   }
+  overlay_vertex_capacity_bytes_ = 0;
+  overlay_index_capacity_bytes_ = 0;
   overlay_index_count_ = 0;
 }
 

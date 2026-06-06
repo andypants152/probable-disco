@@ -12,6 +12,7 @@ struct SubtitleFrame;
 struct Renderer {
   virtual ~Renderer() = default;
   virtual bool init() = 0;
+  virtual void begin_frame_stats() {}
   virtual void upload_mesh(const Mesh& mesh) = 0;
   virtual bool supports_separate_meshes() const { return false; }
   virtual void upload_static_mesh(const Mesh& mesh) { upload_mesh(mesh); }

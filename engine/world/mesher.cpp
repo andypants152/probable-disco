@@ -532,15 +532,6 @@ void append_ledge_breakup(Mesh& mesh,
   append_box(mesh, {min, max, pack_rgba(82, 70, 48)});
 }
 
-bool has_exposed_tree_neighbor(const TerrainGenerator& generator, int world_x, int y, int world_z) {
-  for (const Face& face : kFaces) {
-    if (!is_tree_type(generator.voxel_at(world_x + face.dx, y + face.dy, world_z + face.dz).type)) {
-      return true;
-    }
-  }
-  return false;
-}
-
 void append_tree_box(Mesh& mesh, DetailBudget& budget, Vec3 min, Vec3 max, PackedColor color) {
   if (!allow_tree_detail(budget)) {
     return;
@@ -601,47 +592,19 @@ void append_bark_visual(Mesh& mesh,
                         int world_x,
                         int y,
                         int world_z,
+                        bool is_base,
                         DetailBudget& budget) {
-  const bool is_base = generator.voxel_at(world_x, y - 1, world_z).type != VoxelType::Bark;
-  const float segment_height = TREE_VISUAL_VOXEL_SCALE;
-  const int segments = std::max(1, static_cast<int>(std::round(WORLD_LOGICAL_CELL_SIZE / segment_height)));
   const float center_x = static_cast<float>(world_x) + 0.5f;
   const float center_z = static_cast<float>(world_z) + 0.5f;
-
-  for (int segment = 0; segment < segments; ++segment) {
-    const float segment_min_y = static_cast<float>(y) + static_cast<float>(segment) * segment_height;
-    const float segment_max_y = segment_min_y + segment_height + 0.015f;
-    const float jitter_x = (hash01_3(world_x + segment * 3, y, world_z, 0x7472756eu) - 0.5f) * 0.04f;
-    const float jitter_z = (hash01_3(world_x, y, world_z - segment * 5, 0x7472756eu) - 0.5f) * 0.04f;
-    const float radius_x = 0.29f + hash01_3(world_x, y + segment, world_z, 0x62726b31u) * 0.035f;
-    const float radius_z = 0.29f + hash01_3(world_x + segment, y, world_z, 0x62726b32u) * 0.035f;
-    append_tree_box(mesh,
-                    budget,
-                    {center_x + jitter_x - radius_x, segment_min_y, center_z + jitter_z - radius_z},
-                    {center_x + jitter_x + radius_x, segment_max_y, center_z + jitter_z + radius_z},
-                    varied_bark_color(world_x, y + segment, world_z));
-
-    const float protrusion_roll = hash01_3(world_x - segment * 11, y, world_z + segment * 17, 0x6b6e6f74u);
-    if (protrusion_roll < TREE_TRUNK_DETAIL_DENSITY * 0.70f * detail_density_scale(budget.visual_detail_level)) {
-      const int side = static_cast<int>(hash3(world_x, y + segment, world_z, 0x73696465u) % 4u);
-      Vec3 min = {center_x - 0.09f, segment_min_y + 0.14f, center_z - 0.09f};
-      Vec3 max = {center_x + 0.09f, segment_min_y + 0.27f, center_z + 0.09f};
-      if (side == 0) {
-        min.x = center_x + radius_x - 0.02f;
-        max.x = center_x + radius_x + 0.10f;
-      } else if (side == 1) {
-        min.x = center_x - radius_x - 0.10f;
-        max.x = center_x - radius_x + 0.02f;
-      } else if (side == 2) {
-        min.z = center_z + radius_z - 0.02f;
-        max.z = center_z + radius_z + 0.10f;
-      } else {
-        min.z = center_z - radius_z - 0.10f;
-        max.z = center_z - radius_z + 0.02f;
-      }
-      append_tree_box(mesh, budget, min, max, protrusion_roll < 0.10f ? pack_rgba(78, 48, 31) : pack_rgba(118, 76, 45));
-    }
-  }
+  const float jitter_x = (hash01_3(world_x, y, world_z, 0x7472756eu) - 0.5f) * 0.035f;
+  const float jitter_z = (hash01_3(world_x, y, world_z, 0x74727a65u) - 0.5f) * 0.035f;
+  const float radius_x = 0.30f + hash01_3(world_x, y, world_z, 0x62726b31u) * 0.035f;
+  const float radius_z = 0.30f + hash01_3(world_x, y, world_z, 0x62726b32u) * 0.035f;
+  append_tree_box(mesh,
+                  budget,
+                  {center_x + jitter_x - radius_x, static_cast<float>(y), center_z + jitter_z - radius_z},
+                  {center_x + jitter_x + radius_x, static_cast<float>(y) + WORLD_LOGICAL_CELL_SIZE, center_z + jitter_z + radius_z},
+                  varied_bark_color(world_x, y, world_z));
 
   if (is_base) {
     append_root_detail(mesh, generator, world_x, y, world_z, budget);
@@ -649,56 +612,24 @@ void append_bark_visual(Mesh& mesh,
 }
 
 void append_leaf_visual(Mesh& mesh,
-                        const TerrainGenerator& generator,
                         int world_x,
                         int y,
                         int world_z,
+                        bool exposed,
                         DetailBudget& budget) {
-  const bool exposed = has_exposed_tree_neighbor(generator, world_x, y, world_z);
   const float hole_roll = hash01_3(world_x, y, world_z, 0x67617073u);
-  if (!exposed && hole_roll > 0.96f) {
-    return;
-  }
-  if (exposed && hole_roll > 0.985f) {
+  if (!exposed || hole_roll > 0.985f || !allow_tree_detail(budget)) {
     return;
   }
 
-  const float density = TREE_LEAF_DETAIL_DENSITY * detail_density_scale(budget.visual_detail_level);
-  const int base_clumps = exposed ? 3 : 2;
-  const int bonus_clumps = budget.visual_detail_level >= kNearVisualDetailLevel
-      ? static_cast<int>(hash3(world_x, y, world_z, 0x1eafc1u) % 2u)
-      : 0;
-  const int clumps = base_clumps + bonus_clumps;
-  for (int clump = 0; clump < clumps; ++clump) {
-    const float clump_roll = hash01_3(world_x + clump * 17, y - clump * 5, world_z + clump * 11, 0x1eafc1u);
-    if (clump > 0 && clump_roll > density) {
-      continue;
-    }
-    if (!allow_tree_detail(budget)) {
-      continue;
-    }
-
-    constexpr std::array<Vec3, 4> kLeafClumpAnchors = {{
-        {0.34f, 0.36f, 0.34f},
-        {0.66f, 0.40f, 0.62f},
-        {0.36f, 0.68f, 0.66f},
-        {0.64f, 0.70f, 0.34f},
-    }};
-    const Vec3 anchor = kLeafClumpAnchors[static_cast<std::size_t>(clump % static_cast<int>(kLeafClumpAnchors.size()))];
-    const float sx = anchor.x + (hash01_3(world_x + clump * 31, y, world_z, 0x1eafc1u) - 0.5f) * 0.12f;
-    const float sy = anchor.y + (hash01_3(world_x, y + clump * 13, world_z, 0x1eafc1u) - 0.5f) * 0.10f;
-    const float sz = anchor.z + (hash01_3(world_x, y, world_z - clump * 29, 0x1eafc1u) - 0.5f) * 0.12f;
-    const float size = TREE_VISUAL_VOXEL_SCALE * (0.82f + hash01_3(world_x + clump, y, world_z, 0x1eafc1u) * 0.18f);
-    const float half = size * 0.5f;
-    const Vec3 center = {
-        static_cast<float>(world_x) + sx,
-        static_cast<float>(y) + sy,
-        static_cast<float>(world_z) + sz,
-    };
-    append_box(mesh, {{center.x - half, center.y - half, center.z - half},
-                      {center.x + half, center.y + half, center.z + half},
-                      varied_leaf_color(world_x, y, world_z, clump)});
-  }
+  const float inset = 0.08f + hash01_3(world_x, y, world_z, 0x1eafc1u) * 0.04f;
+  append_box(mesh, {{static_cast<float>(world_x) + inset,
+                    static_cast<float>(y) + inset,
+                    static_cast<float>(world_z) + inset},
+                    {static_cast<float>(world_x) + 1.0f - inset,
+                    static_cast<float>(y) + 1.0f - inset,
+                    static_cast<float>(world_z) + 1.0f - inset},
+                    varied_leaf_color(world_x, y, world_z, 0)});
 }
 
 void append_rock(Mesh& mesh, const TerrainGenerator& generator, int world_x, int world_z, float seed) {
@@ -1044,6 +975,65 @@ Mesh build_chunk_mesh(const Chunk& chunk) {
   return mesh;
 }
 
+class WorldMeshSampleCache {
+ public:
+  WorldMeshSampleCache(const TerrainGenerator& generator, int min_x, int min_z, int size_x, int size_z)
+      : min_x_(min_x),
+        min_z_(min_z),
+        padded_size_x_(size_x + 2),
+        padded_size_z_(size_z + 2),
+        heights_(static_cast<std::size_t>(padded_size_x_ * padded_size_z_)),
+        voxels_(static_cast<std::size_t>(padded_size_x_ * padded_size_z_ * kChunkSize)) {
+    for (int pz = 0; pz < padded_size_z_; ++pz) {
+      for (int px = 0; px < padded_size_x_; ++px) {
+        const int world_x = min_x_ + px - 1;
+        const int world_z = min_z_ + pz - 1;
+        heights_[height_index(px, pz)] = generator.terrain_height(world_x, world_z);
+        for (int y = 0; y < kChunkSize; ++y) {
+          voxels_[voxel_index(px, y, pz)] = generator.voxel_at(world_x, y, world_z).type;
+        }
+      }
+    }
+  }
+
+  Voxel voxel_at(const TerrainGenerator& generator, int world_x, int y, int world_z) const {
+    if (y < 0 || y >= kChunkSize) {
+      return generator.voxel_at(world_x, y, world_z);
+    }
+    const int px = world_x - min_x_ + 1;
+    const int pz = world_z - min_z_ + 1;
+    if (px < 0 || px >= padded_size_x_ || pz < 0 || pz >= padded_size_z_) {
+      return generator.voxel_at(world_x, y, world_z);
+    }
+    return {voxels_[voxel_index(px, y, pz)]};
+  }
+
+  int terrain_height(const TerrainGenerator& generator, int world_x, int world_z) const {
+    const int px = world_x - min_x_ + 1;
+    const int pz = world_z - min_z_ + 1;
+    if (px < 0 || px >= padded_size_x_ || pz < 0 || pz >= padded_size_z_) {
+      return generator.terrain_height(world_x, world_z);
+    }
+    return heights_[height_index(px, pz)];
+  }
+
+ private:
+  std::size_t height_index(int px, int pz) const {
+    return static_cast<std::size_t>(px + padded_size_x_ * pz);
+  }
+
+  std::size_t voxel_index(int px, int y, int pz) const {
+    return static_cast<std::size_t>(px + padded_size_x_ * (pz + padded_size_z_ * y));
+  }
+
+  int min_x_ = 0;
+  int min_z_ = 0;
+  int padded_size_x_ = 0;
+  int padded_size_z_ = 0;
+  std::vector<int> heights_;
+  std::vector<VoxelType> voxels_;
+};
+
 Mesh build_world_mesh(const TerrainGenerator& generator,
                       int min_x,
                       int min_z,
@@ -1060,26 +1050,35 @@ Mesh build_world_mesh(const TerrainGenerator& generator,
 
   DetailBudget detail_budget = {};
   detail_budget.visual_detail_level = visual_detail_level;
+  const WorldMeshSampleCache cache(generator, min_x, min_z, size_x, size_z);
 
   for (int y = 0; y < kChunkSize; ++y) {
     for (int z = min_z; z < min_z + size_z; ++z) {
       for (int x = min_x; x < min_x + size_x; ++x) {
-        const Voxel voxel = generator.voxel_at(x, y, z);
+        const Voxel voxel = cache.voxel_at(generator, x, y, z);
         if (!is_solid(voxel.type)) {
           continue;
         }
 
         if (voxel.type == VoxelType::Bark) {
-          append_bark_visual(mesh, generator, x, y, z, detail_budget);
+          const bool is_base = cache.voxel_at(generator, x, y - 1, z).type != VoxelType::Bark;
+          append_bark_visual(mesh, generator, x, y, z, is_base, detail_budget);
           continue;
         }
         if (voxel.type == VoxelType::Leaves) {
-          append_leaf_visual(mesh, generator, x, y, z, detail_budget);
+          bool exposed = false;
+          for (const Face& face : kFaces) {
+            if (!is_tree_type(cache.voxel_at(generator, x + face.dx, y + face.dy, z + face.dz).type)) {
+              exposed = true;
+              break;
+            }
+          }
+          append_leaf_visual(mesh, x, y, z, exposed, detail_budget);
           continue;
         }
 
         for (const Face& face : kFaces) {
-          const Voxel neighbor = generator.voxel_at(x + face.dx, y + face.dy, z + face.dz);
+          const Voxel neighbor = cache.voxel_at(generator, x + face.dx, y + face.dy, z + face.dz);
           if (!is_solid(neighbor.type)) {
             if (face.dy > 0 && is_terrain_type(voxel.type)) {
               append_surface_tiles(mesh, generator, x, y, z, voxel.type, visual_detail_level);
@@ -1088,7 +1087,7 @@ Mesh build_world_mesh(const TerrainGenerator& generator,
               }
             } else {
               emit_face(mesh, x, y, z, face, voxel.type);
-              if (voxel.type == VoxelType::Grass && face.dy == 0 && y == generator.terrain_height(x, z)) {
+              if (voxel.type == VoxelType::Grass && face.dy == 0 && y == cache.terrain_height(generator, x, z)) {
                 append_ledge_breakup(mesh, x, y, z, face, detail_budget);
               }
             }

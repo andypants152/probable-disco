@@ -14,8 +14,8 @@ constexpr float TERRAIN_SURFACE_DETAIL_DENSITY = 0.24f;
 constexpr bool ROOT_DETAIL_ENABLED = true;
 constexpr bool LEDGE_BREAKUP_ENABLED = true;
 
-constexpr int MAX_TREE_DETAIL_VOXELS_PER_CHUNK = 4200;
-constexpr int MAX_TERRAIN_DETAIL_VOXELS_PER_CHUNK = 420;
+constexpr int MAX_TREE_DETAIL_VOXELS_PER_CHUNK = 2400;
+constexpr int MAX_TERRAIN_DETAIL_VOXELS_PER_CHUNK = 240;
 
 constexpr int TREE_LAYOUT_CELL_SIZE = 8;
 constexpr int TREE_SHORT_TRUNK_MIN_CELLS = 5;

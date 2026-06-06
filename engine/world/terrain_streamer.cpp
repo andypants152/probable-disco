@@ -13,8 +13,8 @@ namespace voxel {
 
 namespace {
 
-constexpr int kWorldRenderRadiusChunks = 3;
-constexpr int kWorldHighDetailRadiusChunks = 2;
+constexpr int kWorldRenderRadiusChunks = 2;
+constexpr int kWorldVisualDetailLevel = 2;
 
 int floor_to_int(float value) {
   return static_cast<int>(std::floor(value));
@@ -70,6 +70,7 @@ bool TerrainStreamer::update(const TerrainGenerator& generator, Vec3 focus_posit
   const int next_center_chunk_z = chunk_center_step(current_chunk_z, center_chunk_z_);
   chunk_changed_ = next_center_chunk_x != center_chunk_x_ || next_center_chunk_z != center_chunk_z_;
   if (!chunk_changed_) {
+    stats_.rebuilt_chunks = 0;
     return false;
   }
 
@@ -80,6 +81,7 @@ bool TerrainStreamer::update(const TerrainGenerator& generator, Vec3 focus_posit
 }
 
 void TerrainStreamer::rebuild(const TerrainGenerator& generator) {
+  stats_ = {};
   const int span_chunks = kWorldRenderRadiusChunks * 2 + 1;
   const int min_chunk_x = center_chunk_x_ - kWorldRenderRadiusChunks;
   const int min_chunk_z = center_chunk_z_ - kWorldRenderRadiusChunks;
@@ -93,9 +95,7 @@ void TerrainStreamer::rebuild(const TerrainGenerator& generator) {
                                  [chunk_x, chunk_z](const CachedTerrainChunk& chunk) {
                                    return chunk.chunk_x == chunk_x && chunk.chunk_z == chunk_z;
                                  });
-      const int chunk_distance = std::max(std::abs(chunk_x - center_chunk_x_),
-                                          std::abs(chunk_z - center_chunk_z_));
-      const int visual_detail_level = chunk_distance <= kWorldHighDetailRadiusChunks ? 2 : 1;
+      const int visual_detail_level = kWorldVisualDetailLevel;
       if (cached != chunk_cache_.end() && cached->visual_detail_level == visual_detail_level) {
         continue;
       }
@@ -110,6 +110,7 @@ void TerrainStreamer::rebuild(const TerrainGenerator& generator) {
                                     kChunkSize,
                                     kChunkSize,
                                     visual_detail_level);
+      ++stats_.rebuilt_chunks;
       if (cached != chunk_cache_.end()) {
         *cached = std::move(chunk);
       } else {
@@ -125,9 +126,14 @@ void TerrainStreamer::rebuild(const TerrainGenerator& generator) {
         chunk.chunk_z < min_chunk_z || chunk.chunk_z > max_chunk_z) {
       continue;
     }
+    ++stats_.visible_chunks;
     vertex_count += chunk.mesh.vertices.size();
     index_count += chunk.mesh.indices.size();
+    stats_.largest_chunk_vertices = std::max(stats_.largest_chunk_vertices, chunk.mesh.vertices.size());
+    stats_.largest_chunk_triangles = std::max(stats_.largest_chunk_triangles, chunk.mesh.indices.size() / 3u);
   }
+  stats_.visible_vertices = vertex_count;
+  stats_.visible_triangles = index_count / 3u;
 
   terrain_mesh_.clear();
   terrain_mesh_.vertices.reserve(vertex_count);

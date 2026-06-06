@@ -45,6 +45,12 @@ class App {
     int active_fireflies = 0;
     int active_gameplay_lights = 0;
     int gameplay_light_limit = 0;
+    int terrain_visible_chunks = 0;
+    int terrain_rebuilt_chunks = 0;
+    std::size_t terrain_vertices = 0;
+    std::size_t terrain_triangles = 0;
+    std::size_t terrain_largest_chunk_vertices = 0;
+    std::size_t terrain_largest_chunk_triangles = 0;
     float fps = 0.0f;
     float firefly_glow_intensity = 0.0f;
     float lantern_light_intensity = 0.0f;
@@ -54,6 +60,14 @@ class App {
     float distance_to_objective = 0.0f;
     bool fox_moved = false;
     bool chunk_changed = false;
+    bool squirrel_structural_changed = false;
+    bool squirrel_animation_changed = false;
+    bool squirrel_lights_changed = false;
+    bool squirrel_animation_upload_due = false;
+    bool gameplay_structural_changed = false;
+    bool gameplay_animation_upload_due = false;
+    bool dynamic_mesh_rebuilt = false;
+    bool dynamic_mesh_uploaded = false;
   };
 
   const FrameStats& frame_stats() const { return frame_stats_; }
@@ -88,6 +102,8 @@ class App {
   int gameplay_light_count_ = 0;
   int gameplay_light_limit_ = kMaxRendererGameplayLights;
   float hud_fps_ = 0.0f;
+  float squirrel_animation_upload_timer_ = 0.0f;
+  float gameplay_animation_upload_timer_ = 0.0f;
   RenderFrame render_frame_commands_;
   bool initialized_ = false;
   bool previous_interact_down_ = false;

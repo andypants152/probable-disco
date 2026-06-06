@@ -47,5 +47,10 @@ void build_subtitle_batch(QuadBatch& batch,
                           const SubtitleFrame& subtitle,
                           int framebuffer_width,
                           int framebuffer_height);
+void append_subtitle_batch(QuadBatch& batch,
+                           const BitmapFontAtlas& atlas,
+                           const SubtitleFrame& subtitle,
+                           int framebuffer_width,
+                           int framebuffer_height);
 
 }  // namespace voxel
