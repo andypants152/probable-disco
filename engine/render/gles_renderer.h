@@ -99,10 +99,12 @@ class GlesRenderer : public Renderer {
   GLint light_count_uniform_ = -1;
   GLint light_position_radius_uniform_ = -1;
   GLint light_color_intensity_uniform_ = -1;
+  GLint light_falloff_uniform_ = -1;
   GLint overlay_viewport_uniform_ = -1;
   GLint overlay_texture_uniform_ = -1;
   float light_position_radius_[kMaxRendererGameplayLights * 4] = {};
   float light_color_intensity_[kMaxRendererGameplayLights * 4] = {};
+  float light_falloff_[kMaxRendererGameplayLights] = {};
   int light_count_ = 0;
   BitmapFontAtlas font_atlas_;
   QuadBatch overlay_batch_;

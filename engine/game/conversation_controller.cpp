@@ -154,6 +154,9 @@ ConversationController::CameraPose ConversationController::conversation_pose(con
   if (request.shot == Shot::SpeakerCloseUp) {
     return speaker_close_up_pose(camera, request.listener_position, request.speaker_position);
   }
+  if (request.shot == Shot::SpeakerMediumCloseUp) {
+    return speaker_medium_close_up_pose(camera, request.listener_position, request.speaker_position);
+  }
   if (request.shot == Shot::LookAtFocus) {
     return look_at_focus_pose(camera, request.listener_position, request.focus_position);
   }
@@ -198,6 +201,26 @@ ConversationController::CameraPose ConversationController::speaker_close_up_pose
       shoulder * 1.05f +
       Vec3{0.0f, 1.18f, 0.0f};
   const Vec3 look_target = speaker_position + Vec3{0.0f, 0.80f, 0.0f};
+  const Vec3 look_direction = normalize(look_target - camera_position);
+  const float yaw = std::atan2(look_direction.z, look_direction.x);
+  const float pitch = std::asin(std::max(-1.0f, std::min(1.0f, look_direction.y)));
+  return {camera_position, yaw, pitch};
+}
+
+ConversationController::CameraPose ConversationController::speaker_medium_close_up_pose(const Camera& camera,
+                                                                                        Vec3 listener_position,
+                                                                                        Vec3 speaker_position) {
+  const Vec3 listener_to_speaker = horizontal_direction(listener_position, speaker_position, camera.forward());
+  Vec3 shoulder = normalize(cross({0.0f, 1.0f, 0.0f}, listener_to_speaker));
+  const Vec3 camera_side = {camera.position.x - speaker_position.x, 0.0f, camera.position.z - speaker_position.z};
+  if (dot(camera_side, shoulder) < 0.0f) {
+    shoulder = shoulder * -1.0f;
+  }
+  const Vec3 camera_position = speaker_position -
+      listener_to_speaker * 3.05f +
+      shoulder * 1.25f +
+      Vec3{0.0f, 1.42f, 0.0f};
+  const Vec3 look_target = speaker_position + Vec3{0.0f, 1.28f, 0.0f};
   const Vec3 look_direction = normalize(look_target - camera_position);
   const float yaw = std::atan2(look_direction.z, look_direction.x);
   const float pitch = std::asin(std::max(-1.0f, std::min(1.0f, look_direction.y)));

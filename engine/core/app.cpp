@@ -235,6 +235,7 @@ void App::frame(Renderer& renderer, const CameraInput& input) {
     request.speaker_id = event.squirrel_id;
     request.text = event.text;
     request.seconds = event.seconds;
+    request.shot = ConversationController::Shot::SpeakerMediumCloseUp;
     conversation_controller_.begin(camera_, request);
     conversation_started = true;
   }

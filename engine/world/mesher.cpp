@@ -1328,10 +1328,12 @@ void append_acorn_mesh(Mesh& mesh, Vec3 position, float phase, float readability
   const float sway_z = std::cos(phase * 2.1f) * nearby * 0.020f;
   const float cap_sway_x = std::sin(phase * 2.7f + 0.7f) * nearby * 0.018f;
   const float cap_sway_z = std::cos(phase * 2.1f + 0.5f) * nearby * 0.014f;
-  const PackedColor shell = pack_rgba(187, 111, 43);
+  const float readable_pulse = nearby * (0.35f + 0.65f * (std::sin(phase * 4.2f) * 0.5f + 0.5f));
+  const PackedColor shell = mix_rgb(pack_rgba(187, 111, 43), pack_rgba(210, 132, 55), readable_pulse * 0.24f);
   const PackedColor shell_shadow = pack_rgba(137, 74, 35);
   const PackedColor cap = pack_rgba(78, 63, 38, 255);
-  const PackedColor cap_highlight = pack_rgba(122, 93, 50, 255);
+  const PackedColor cap_highlight =
+      mix_rgb(pack_rgba(122, 93, 50), pack_rgba(174, 129, 61), readable_pulse * 0.55f);
   const PackedColor stem = pack_rgba(63, 49, 32, 255);
 
   append_box(mesh, {{position.x - 0.19f * scale + sway_x, position.y + 0.04f * scale, position.z - 0.17f * scale + sway_z},

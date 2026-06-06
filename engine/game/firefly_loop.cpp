@@ -31,20 +31,33 @@ constexpr float kHeldFireflyOrbitSpeed = 1.18f;
 constexpr float kHeldFireflyWobbleAmount = 0.32f;
 constexpr float kHeldFireflyTwinkleSpeed = 2.65f;
 constexpr float kLanternSpawnClearRadius = 8.0f;
-constexpr float kLanternLightRadius = 18.0f;
-constexpr float kLanternLightIntensity = 2.0f;
-constexpr float kLanternGroundGlowRadius = 9.0f;
+constexpr float kLanternLightRadius = 15.0f;
+constexpr float kLanternLightIntensity = 0.82f;
+constexpr float kLanternLightFalloff = 5.45f;
+constexpr float kLanternGroundGlowRadius = 10.0f;
+constexpr float kLanternGroundGlowIntensity = 0.16f;
+constexpr float kLanternGroundGlowFalloff = 3.8f;
 constexpr float kLanternLightPulseDuration = 2.4f;
-constexpr float kLanternLightPulseRadius = 22.0f;
+constexpr float kLanternLightPulseRadius = 4.0f;
+constexpr float kLanternLightPulseIntensity = 0.22f;
+constexpr float kLanternSquirrelBonusIntensity = 0.04f;
+constexpr float kLanternStackIntensityDecay = 0.55f;
 constexpr float kSquirrelLanternBonusRange = 54.0f;
 constexpr int kMaxSquirrelLanternBonus = 4;
-constexpr float kFireflyLightRadius = 4.4f;
-constexpr float kCarriedFireflyLightRadius = 4.0f;
+constexpr float kFireflyLightRadius = 6.2f;
+constexpr float kFireflyLightIntensityBase = 0.28f;
+constexpr float kFireflyLightIntensityGlow = 0.72f;
+constexpr float kFireflyLightFalloff = 1.65f;
+constexpr float kCarriedFireflyLightRadius = 5.8f;
+constexpr float kCarriedFireflyLightIntensityBase = 0.28f;
+constexpr float kCarriedFireflyLightIntensityGlow = 0.66f;
 constexpr float kFireflyLightFullDistance = 18.0f;
 constexpr float kFireflyLightCullDistance = 30.0f;
 constexpr float kLanternLightFullDistance = 30.0f;
-constexpr float kLanternLightCullDistance = 52.0f;
+constexpr float kLanternLightCullDistance = 54.0f;
 constexpr int kMaxLitLanternLights = 3;
+constexpr int kMaxCarriedFireflyGameplayLights = 3;
+constexpr int kMaxFreeFireflyGameplayLights = 12;
 constexpr float kFireflyCollectRadius = 1.85f;
 constexpr float kFireflyDepositRadius = 3.15f;
 constexpr float kFireflyClusterRadius = kLanternSpawnClearRadius;
@@ -167,7 +180,8 @@ void add_gameplay_light(std::array<GameplayLight, kMaxGameplayLights>& lights,
                         Vec3 position,
                         Vec3 color,
                         float radius,
-                        float intensity) {
+                        float intensity,
+                        float falloff = 2.0f) {
   if (light_count >= light_limit ||
       light_count >= static_cast<int>(lights.size()) ||
       intensity <= 0.0f ||
@@ -179,6 +193,7 @@ void add_gameplay_light(std::array<GameplayLight, kMaxGameplayLights>& lights,
   light.color = color;
   light.radius = radius;
   light.intensity = intensity;
+  light.falloff = falloff;
   light.active = true;
 }
 
@@ -513,35 +528,6 @@ void FireflyLoop::append_gameplay_lights(std::array<GameplayLight, kMaxGameplayL
   const Vec3 mote_color = {0.86f, 1.0f, 0.46f};
   const Vec3 lantern_color = {1.0f, 0.52f, 0.18f};
 
-  for (int i = 0; i < carried_fireflies_; ++i) {
-    const float glow = carried_firefly_glow_intensity(i);
-    add_gameplay_light(lights,
-                       light_count,
-                       light_limit,
-                       carried_firefly_position(fox_position, fox_heading, i),
-                       mote_color,
-                       kCarriedFireflyLightRadius,
-                       0.24f + glow * 0.36f);
-  }
-
-  for (const Firefly& firefly : fireflies_) {
-    if (!firefly.active || firefly.collected) {
-      continue;
-    }
-    const float distance = horizontal_distance(fox_position, firefly.position);
-    const float light_fade = distance_fade(distance, kFireflyLightFullDistance, kFireflyLightCullDistance);
-    if (light_fade <= 0.0f) {
-      continue;
-    }
-    add_gameplay_light(lights,
-                       light_count,
-                       light_limit,
-                       firefly.position,
-                       firefly_color,
-                       kFireflyLightRadius,
-                       (0.30f + firefly.glow_intensity * 0.44f) * light_fade);
-  }
-
   std::array<int, kMaxLitLanternLights> closest_lanterns = {};
   std::array<float, kMaxLitLanternLights> closest_distances = {};
   int closest_lantern_count = 0;
@@ -582,39 +568,65 @@ void FireflyLoop::append_gameplay_lights(std::array<GameplayLight, kMaxGameplayL
     const float pulse_t = lit_lantern.pulse_timer > 0.0f
         ? 1.0f - lit_lantern.pulse_timer / kLanternLightPulseDuration
         : 1.0f;
-    const float pulse = lit_lantern.pulse_timer > 0.0f ? (1.0f - pulse_t) * 0.8f : 0.0f;
+    const float pulse = lit_lantern.pulse_timer > 0.0f ? (1.0f - pulse_t) : 0.0f;
+    const float stack_scale = i == 0 ? 1.0f : kLanternStackIntensityDecay;
     add_gameplay_light(lights,
                        light_count,
                        light_limit,
                        lantern_light_position,
                        lantern_color,
                        kLanternLightRadius + pulse * kLanternLightPulseRadius,
-                       (kLanternLightIntensity + pulse + 0.12f * static_cast<float>(lit_lantern.squirrel_bonus)) *
-                           light_fade);
+                       (kLanternLightIntensity + pulse * kLanternLightPulseIntensity +
+                        kLanternSquirrelBonusIntensity * static_cast<float>(lit_lantern.squirrel_bonus)) *
+                           light_fade * stack_scale,
+                       kLanternLightFalloff);
     add_gameplay_light(lights,
                        light_count,
                        light_limit,
                        lit_lantern.position + Vec3{0.0f, 0.26f, 0.0f},
                        lantern_color,
                        kLanternGroundGlowRadius,
-                       (0.42f + 0.025f * static_cast<float>(lit_lantern.squirrel_bonus)) * light_fade);
-    for (int bonus = 0; bonus < lit_lantern.squirrel_bonus; ++bonus) {
-      const float seed = static_cast<float>(bonus) * 2.17f + lit_lantern.position.x * 0.037f +
-                         lit_lantern.position.z * 0.021f;
-      const float angle = lit_lantern.glow_timer * (0.42f + 0.05f * static_cast<float>(bonus)) + seed;
-      const Vec3 mote_position = lit_lantern.position + Vec3{
-          std::sin(angle) * (2.2f + 0.45f * static_cast<float>(bonus % 3)),
-          2.05f + std::sin(lit_lantern.glow_timer * 1.2f + seed) * 0.38f,
-          std::cos(angle) * (2.2f + 0.45f * static_cast<float>(bonus % 3)),
-      };
-      add_gameplay_light(lights,
-                         light_count,
-                         light_limit,
-                         mote_position,
-                         mote_color,
-                         kFireflyLightRadius * 0.78f,
-                         (0.22f + 0.04f * static_cast<float>(bonus)) * light_fade);
+                       (kLanternGroundGlowIntensity +
+                        0.012f * static_cast<float>(lit_lantern.squirrel_bonus)) * light_fade * stack_scale,
+                       kLanternGroundGlowFalloff);
+  }
+
+  const int carried_firefly_light_count = std::min(carried_fireflies_, kMaxCarriedFireflyGameplayLights);
+  for (int i = 0; i < carried_firefly_light_count; ++i) {
+    const float glow = carried_firefly_glow_intensity(i);
+    add_gameplay_light(lights,
+                       light_count,
+                       light_limit,
+                       carried_firefly_position(fox_position, fox_heading, i),
+                       mote_color,
+                       kCarriedFireflyLightRadius,
+                       kCarriedFireflyLightIntensityBase + glow * kCarriedFireflyLightIntensityGlow,
+                       kFireflyLightFalloff);
+  }
+
+  int free_firefly_light_count = 0;
+  for (const Firefly& firefly : fireflies_) {
+    if (!firefly.active || firefly.collected) {
+      continue;
     }
+    if (free_firefly_light_count >= kMaxFreeFireflyGameplayLights) {
+      break;
+    }
+    const float distance = horizontal_distance(fox_position, firefly.position);
+    const float light_fade = distance_fade(distance, kFireflyLightFullDistance, kFireflyLightCullDistance);
+    if (light_fade <= 0.0f) {
+      continue;
+    }
+    add_gameplay_light(lights,
+                       light_count,
+                       light_limit,
+                       firefly.position,
+                       firefly_color,
+                       kFireflyLightRadius,
+                       (kFireflyLightIntensityBase + firefly.glow_intensity * kFireflyLightIntensityGlow) *
+                           light_fade,
+                       kFireflyLightFalloff);
+    ++free_firefly_light_count;
   }
 }
 

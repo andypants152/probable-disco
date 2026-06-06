@@ -12,6 +12,7 @@ class ConversationController {
   enum class Shot {
     OverShoulder,
     SpeakerCloseUp,
+    SpeakerMediumCloseUp,
     LookAtFocus,
     FollowSpeaker,
   };
@@ -56,6 +57,7 @@ class ConversationController {
   static CameraPose conversation_pose(const Camera& camera, const Request& request);
   static CameraPose over_shoulder_pose(const Camera& camera, Vec3 fox_position, Vec3 speaker_position);
   static CameraPose speaker_close_up_pose(const Camera& camera, Vec3 listener_position, Vec3 speaker_position);
+  static CameraPose speaker_medium_close_up_pose(const Camera& camera, Vec3 listener_position, Vec3 speaker_position);
   static CameraPose look_at_focus_pose(const Camera& camera, Vec3 listener_position, Vec3 focus_position);
   static CameraPose follow_speaker_pose(const Camera& camera, Vec3 listener_position, Vec3 speaker_position);
   static CameraPose mix_pose(CameraPose a, CameraPose b, float t);

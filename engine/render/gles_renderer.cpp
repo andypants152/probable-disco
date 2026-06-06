@@ -50,8 +50,9 @@ in vec3 v_micro_position;
 in float v_depth;
 
 uniform int u_light_count;
-uniform vec4 u_light_position_radius[6];
-uniform vec4 u_light_color_intensity[6];
+uniform vec4 u_light_position_radius[24];
+uniform vec4 u_light_color_intensity[24];
+uniform float u_light_falloff[24];
 
 out vec4 frag_color;
 
@@ -78,7 +79,7 @@ void main() {
   float glow = max(dot(normal, glow_dir), 0.0);
   vec3 light = mix(moon_ground, moon_sky, hemi) * 0.38 + glow_color * glow * 0.24 + vec3(0.035, 0.045, 0.040);
   vec3 local_light = vec3(0.0);
-  for (int i = 0; i < 6; ++i) {
+  for (int i = 0; i < 24; ++i) {
     if (i >= u_light_count) {
       break;
     }
@@ -86,9 +87,9 @@ void main() {
     vec4 light_color_intensity = u_light_color_intensity[i];
     vec3 light_delta = v_world_position - light_pos_radius.xyz;
     float radius = max(light_pos_radius.w, 0.001);
-    float falloff = clamp(1.0 - dot(light_delta, light_delta) / (radius * radius), 0.0, 1.0);
-    falloff *= falloff;
-    local_light += light_color_intensity.rgb * (falloff * light_color_intensity.w * 1.65);
+    float falloff_base = clamp(1.0 - dot(light_delta, light_delta) / (radius * radius), 0.0, 1.0);
+    float falloff = pow(falloff_base, max(u_light_falloff[i], 0.5));
+    local_light += light_color_intensity.rgb * (falloff * light_color_intensity.w * 1.20);
   }
   vec3 outline = vec3(0.015, 0.020, 0.018);
   vec3 fog_color = vec3(0.114, 0.169, 0.153);
@@ -314,6 +315,7 @@ void GlesRenderer::render_frame(const RenderFrame& frame) {
     light_color_intensity_[base + 1] = light.color.y;
     light_color_intensity_[base + 2] = light.color.z;
     light_color_intensity_[base + 3] = light.intensity;
+    light_falloff_[light_count_] = light.falloff;
     ++light_count_;
   }
 
@@ -331,6 +333,7 @@ void GlesRenderer::render_frame(const RenderFrame& frame) {
   glUniform1i(light_count_uniform_, light_count_);
   glUniform4fv(light_position_radius_uniform_, kMaxRendererGameplayLights, light_position_radius_);
   glUniform4fv(light_color_intensity_uniform_, kMaxRendererGameplayLights, light_color_intensity_);
+  glUniform1fv(light_falloff_uniform_, kMaxRendererGameplayLights, light_falloff_);
   frame_stats_.command_record_ns = elapsed_ns(command_start, Clock::now());
 
   const auto draw_start = Clock::now();
@@ -427,6 +430,7 @@ bool GlesRenderer::create_program() {
   light_count_uniform_ = glGetUniformLocation(program_, "u_light_count");
   light_position_radius_uniform_ = glGetUniformLocation(program_, "u_light_position_radius");
   light_color_intensity_uniform_ = glGetUniformLocation(program_, "u_light_color_intensity");
+  light_falloff_uniform_ = glGetUniformLocation(program_, "u_light_falloff");
   return true;
 }
 
