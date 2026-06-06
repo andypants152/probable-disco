@@ -27,7 +27,7 @@ void append_squirrel_mesh(Mesh& mesh,
                           float hop_pose,
                           bool happy);
 void append_heart_mesh(Mesh& mesh, Vec3 position, float scale, float pulse);
-void append_acorn_mesh(Mesh& mesh, Vec3 position);
+void append_acorn_mesh(Mesh& mesh, Vec3 position, float phase, float readability);
 void append_lantern_mesh(Mesh& mesh,
                          Vec3 position,
                          int deposited_fireflies,

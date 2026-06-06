@@ -20,6 +20,10 @@ constexpr float kLitLanternAcornRadius = 15.5f;
 constexpr float kLitLanternSquirrelRadius = 8.2f;
 constexpr float kSquirrelRenderDistance = 46.0f;
 constexpr float kAcornRenderDistance = 36.0f;
+constexpr float kAcornFullReadabilityDistance = 9.0f;
+constexpr float kAcornGlintCullDistance = 28.0f;
+constexpr float kAcornLightFullDistance = 7.5f;
+constexpr float kAcornLightCullDistance = 16.0f;
 constexpr float kSquirrelApproachCameraRadius = 26.0f;
 constexpr float kSquirrelAutoTalkRadius = 10.5f;
 constexpr float kSquirrelQuestCreditRadius = 30.0f;
@@ -83,6 +87,16 @@ float horizontal_distance(Vec3 a, Vec3 b) {
   const float dx = b.x - a.x;
   const float dz = b.z - a.z;
   return std::sqrt(dx * dx + dz * dz);
+}
+
+float distance_fade(float distance, float full_distance, float cull_distance) {
+  if (distance <= full_distance) {
+    return 1.0f;
+  }
+  if (distance >= cull_distance || cull_distance <= full_distance) {
+    return 0.0f;
+  }
+  return 1.0f - smoothstep((distance - full_distance) / (cull_distance - full_distance));
 }
 
 float distance_sq(float ax, float az, float bx, float bz) {
@@ -496,9 +510,11 @@ SquirrelQuest::UpdateResult SquirrelQuest::update(float dt,
     const bool close = distance <= kAcornRenderDistance;
     if (close) {
       acorn.phase += dt;
-      const float bob = std::sin(acorn.phase * 2.3f) * 0.10f;
+      const float readability = distance_fade(distance, kAcornFullReadabilityDistance, kAcornGlintCullDistance);
+      const float bob = std::sin(acorn.phase * 2.3f) * (0.04f + 0.12f * readability);
       acorn.position = acorn.home + Vec3{0.0f, bob, 0.0f};
       result.animation_changed = true;
+      result.lights_changed = result.lights_changed || distance <= kAcornLightCullDistance;
     }
     if (pickup_squirrel_id != 0 && distance <= kAcornPickupRadius) {
       QuestProgress& progress = progress_for(pickup_squirrel_id);
@@ -617,10 +633,12 @@ void SquirrelQuest::append_dynamic_mesh(Mesh& mesh, Vec3 fox_position) const {
     if (!acorn.active || collected_acorn_ids_.find(acorn.id) != collected_acorn_ids_.end()) {
       continue;
     }
-    if (horizontal_distance(fox_position, acorn.position) > kAcornRenderDistance) {
+    const float distance = horizontal_distance(fox_position, acorn.position);
+    if (distance > kAcornRenderDistance) {
       continue;
     }
-    append_acorn_mesh(mesh, acorn.position);
+    const float readability = distance_fade(distance, kAcornFullReadabilityDistance, kAcornGlintCullDistance);
+    append_acorn_mesh(mesh, acorn.position, acorn.phase, readability);
     ++acorn_count;
   }
 }
@@ -637,6 +655,33 @@ void SquirrelQuest::append_gameplay_lights(std::array<GameplayLight, kMaxGamepla
     const float t = squirrel.happy_timer / kRewardBurstSeconds;
     add_gameplay_light(lights, light_count, light_limit, squirrel.home + Vec3{0.0f, 1.7f, 0.0f},
                        burst_color, 5.0f, 0.42f * t);
+  }
+
+  const Acorn* closest_acorn = nullptr;
+  float closest_distance = kAcornLightCullDistance;
+  for (const Acorn& acorn : acorns_) {
+    if (!acorn.active || collected_acorn_ids_.find(acorn.id) != collected_acorn_ids_.end()) {
+      continue;
+    }
+    const float distance = horizontal_distance(fox_position, acorn.position);
+    if (distance >= closest_distance || distance > kAcornLightCullDistance) {
+      continue;
+    }
+    closest_acorn = &acorn;
+    closest_distance = distance;
+  }
+
+  if (closest_acorn != nullptr) {
+    const float fade = distance_fade(closest_distance, kAcornLightFullDistance, kAcornLightCullDistance);
+    const float pulse = std::sin(closest_acorn->phase * 4.4f) * 0.5f + 0.5f;
+    const Vec3 acorn_color = {1.0f, 0.62f, 0.24f};
+    add_gameplay_light(lights,
+                       light_count,
+                       light_limit,
+                       closest_acorn->position + Vec3{0.0f, 0.42f, 0.0f},
+                       acorn_color,
+                       2.4f + pulse * 0.35f,
+                       (0.14f + pulse * 0.10f) * fade);
   }
 }
 

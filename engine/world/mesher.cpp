@@ -1321,19 +1321,33 @@ void append_heart_mesh(Mesh& mesh, Vec3 position, float scale, float pulse) {
                     highlight});
 }
 
-void append_acorn_mesh(Mesh& mesh, Vec3 position) {
-  const PackedColor shell = pack_rgba(151, 92, 43);
-  const PackedColor cap = pack_rgba(93, 65, 39, 255);
-  const PackedColor stem = pack_rgba(70, 50, 32, 255);
+void append_acorn_mesh(Mesh& mesh, Vec3 position, float phase, float readability) {
+  const float nearby = std::max(0.0f, std::min(1.0f, readability));
+  const float scale = 1.12f + nearby * 0.10f;
+  const float sway_x = std::sin(phase * 2.7f) * nearby * 0.026f;
+  const float sway_z = std::cos(phase * 2.1f) * nearby * 0.020f;
+  const float cap_sway_x = std::sin(phase * 2.7f + 0.7f) * nearby * 0.018f;
+  const float cap_sway_z = std::cos(phase * 2.1f + 0.5f) * nearby * 0.014f;
+  const PackedColor shell = pack_rgba(187, 111, 43);
+  const PackedColor shell_shadow = pack_rgba(137, 74, 35);
+  const PackedColor cap = pack_rgba(78, 63, 38, 255);
+  const PackedColor cap_highlight = pack_rgba(122, 93, 50, 255);
+  const PackedColor stem = pack_rgba(63, 49, 32, 255);
 
-  append_box(mesh, {{position.x - 0.16f, position.y + 0.05f, position.z - 0.16f},
-                    {position.x + 0.16f, position.y + 0.32f, position.z + 0.16f},
+  append_box(mesh, {{position.x - 0.19f * scale + sway_x, position.y + 0.04f * scale, position.z - 0.17f * scale + sway_z},
+                    {position.x + 0.19f * scale + sway_x, position.y + 0.34f * scale, position.z + 0.17f * scale + sway_z},
                     shell});
-  append_box(mesh, {{position.x - 0.20f, position.y + 0.28f, position.z - 0.18f},
-                    {position.x + 0.20f, position.y + 0.44f, position.z + 0.18f},
+  append_box(mesh, {{position.x - 0.11f * scale + sway_x, position.y - 0.01f * scale, position.z - 0.10f * scale + sway_z},
+                    {position.x + 0.11f * scale + sway_x, position.y + 0.08f * scale, position.z + 0.10f * scale + sway_z},
+                    shell_shadow});
+  append_box(mesh, {{position.x - 0.23f * scale + cap_sway_x, position.y + 0.29f * scale, position.z - 0.20f * scale + cap_sway_z},
+                    {position.x + 0.23f * scale + cap_sway_x, position.y + 0.47f * scale, position.z + 0.20f * scale + cap_sway_z},
                     cap});
-  append_box(mesh, {{position.x - 0.04f, position.y + 0.42f, position.z - 0.04f},
-                    {position.x + 0.04f, position.y + 0.58f, position.z + 0.04f},
+  append_box(mesh, {{position.x - 0.16f * scale + cap_sway_x, position.y + 0.42f * scale, position.z - 0.22f * scale + cap_sway_z},
+                    {position.x + 0.02f * scale + cap_sway_x, position.y + 0.49f * scale, position.z - 0.16f * scale + cap_sway_z},
+                    cap_highlight});
+  append_box(mesh, {{position.x - 0.05f * scale + cap_sway_x, position.y + 0.45f * scale, position.z - 0.05f * scale + cap_sway_z},
+                    {position.x + 0.05f * scale + cap_sway_x, position.y + 0.63f * scale, position.z + 0.05f * scale + cap_sway_z},
                     stem});
 }
 
