@@ -258,19 +258,19 @@ void append_fox_mesh(Mesh& mesh, Vec3 ground_center, float heading_radians, cons
   // Legs and paws. Diagonal pairs alternate: front-left/back-right, front-right/back-left.
   append_box(mesh, {{-0.94f, 0.16f, -0.76f}, {-0.62f, 0.62f, -0.42f}, dark_orange},
              ground_center, heading_radians, back_left_leg);
-  append_box(mesh, {{-1.00f, 0.00f, -0.84f}, {-0.56f, 0.22f, -0.34f}, dark_orange},
+  append_box(mesh, {{-0.94f, 0.00f, -0.78f}, {-0.62f, 0.16f, -0.42f}, black},
              ground_center, heading_radians, back_left_leg);
   append_box(mesh, {{0.62f, 0.16f, -0.76f}, {0.94f, 0.62f, -0.42f}, dark_orange},
              ground_center, heading_radians, back_right_leg);
-  append_box(mesh, {{0.56f, 0.00f, -0.84f}, {1.00f, 0.22f, -0.34f}, dark_orange},
+  append_box(mesh, {{0.62f, 0.00f, -0.78f}, {0.94f, 0.16f, -0.42f}, black},
              ground_center, heading_radians, back_right_leg);
   append_box(mesh, {{-0.94f, 0.16f, 0.48f}, {-0.62f, 0.62f, 0.82f}, dark_orange},
              ground_center, heading_radians, front_left_leg);
-  append_box(mesh, {{-1.00f, 0.00f, 0.40f}, {-0.56f, 0.22f, 0.92f}, dark_orange},
+  append_box(mesh, {{-0.94f, 0.00f, 0.50f}, {-0.62f, 0.16f, 0.86f}, black},
              ground_center, heading_radians, front_left_leg);
   append_box(mesh, {{0.62f, 0.16f, 0.48f}, {0.94f, 0.62f, 0.82f}, dark_orange},
              ground_center, heading_radians, front_right_leg);
-  append_box(mesh, {{0.56f, 0.00f, 0.40f}, {1.00f, 0.22f, 0.92f}, dark_orange},
+  append_box(mesh, {{0.62f, 0.00f, 0.50f}, {0.94f, 0.16f, 0.86f}, black},
              ground_center, heading_radians, front_right_leg);
 
   // Raised tail with white tip.

@@ -19,7 +19,15 @@ Mesh build_world_mesh(const TerrainGenerator& generator,
                       int visual_detail_level = 2);
 Vec3 owl_perch_position(const TerrainGenerator& generator);
 void append_owl_perch_mesh(Mesh& mesh, Vec3 owl_position, float heading_radians);
-void append_owl_mesh(Mesh& mesh, Vec3 owl_position, float heading_radians, float wing_pose);
+void append_owl_mesh(Mesh& mesh,
+                     Vec3 owl_position,
+                     float heading_radians,
+                     float wing_pose,
+                     float head_yaw,
+                     float head_pitch,
+                     float head_roll,
+                     float body_bob,
+                     float blink);
 void append_firefly_mesh(Mesh& mesh, Vec3 position, float glow_intensity, bool carried);
 void append_squirrel_mesh(Mesh& mesh,
                           Vec3 ground_center,

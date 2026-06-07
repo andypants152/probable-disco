@@ -63,6 +63,8 @@ bool App::init(Renderer& renderer) {
   owl_encounter_.init(generator_);
   firefly_loop_.init(generator_);
   squirrel_quest_.init(generator_, firefly_loop_);
+  lantern_hud_revealed_ = false;
+  squirrel_hud_revealed_ = false;
   rebuild_dynamic_mesh();
   render_frame_commands_.commands.reserve(3);
 
@@ -157,6 +159,9 @@ void App::frame(Renderer& renderer, const CameraInput& input) {
       gameplay_changed = true;
       gameplay_structural_changed = true;
     }
+    if (owl_dialogue.line == 2) {
+      lantern_hud_revealed_ = true;
+    }
     ConversationController::Request request = {};
     request.speaker_position = owl_encounter_.position();
     request.listener_position = fox_position;
@@ -215,6 +220,7 @@ void App::frame(Renderer& renderer, const CameraInput& input) {
       request.text = event.text;
       request.seconds = event.seconds;
       request.shot = ConversationController::Shot::SpeakerCloseUp;
+      squirrel_hud_revealed_ = true;
       if (conversation_controller_.active()) {
         conversation_controller_.replace_line(camera_, request);
       } else {
@@ -426,7 +432,12 @@ void App::rebuild_dynamic_mesh() {
   append_owl_mesh(dynamic_mesh_,
                   owl_encounter_.position(),
                   owl_encounter_.heading(),
-                  owl_encounter_.wing_pose());
+                  owl_encounter_.wing_pose(),
+                  owl_encounter_.head_yaw(),
+                  owl_encounter_.head_pitch(),
+                  owl_encounter_.head_roll(),
+                  owl_encounter_.body_bob(),
+                  owl_encounter_.blink());
 }
 
 void App::rebuild_scene_mesh() {
@@ -447,21 +458,31 @@ void App::dev_deposit_carried_fireflies() {
 }
 
 void App::update_lantern_hud() {
-  char text[96] = {};
-  if (squirrel_quest_.active_quest_needs_acorns()) {
-    std::snprintf(text,
-                  sizeof(text),
-                  "Lanterns lit %d   Squirrels helped %d\nAcorns %d/%d",
-                  firefly_loop_.active_lantern_index(),
-                  squirrel_quest_.completed_squirrels(),
+  char text[128] = {};
+  int written = 0;
+  if (lantern_hud_revealed_) {
+    written = std::snprintf(text,
+                            sizeof(text),
+                            "Lanterns lit %d",
+                            firefly_loop_.active_lantern_index());
+  }
+  if (squirrel_hud_revealed_ && written >= 0 && written < static_cast<int>(sizeof(text))) {
+    written += std::snprintf(text + written,
+                             sizeof(text) - static_cast<std::size_t>(written),
+                             "%sSquirrels helped %d",
+                             written > 0 ? "   " : "",
+                             squirrel_quest_.completed_squirrels());
+  }
+  if (squirrel_hud_revealed_ &&
+      squirrel_quest_.active_quest_needs_acorns() &&
+      written >= 0 &&
+      written < static_cast<int>(sizeof(text))) {
+    std::snprintf(text + written,
+                  sizeof(text) - static_cast<std::size_t>(written),
+                  "%sAcorns %d/%d",
+                  written > 0 ? "\n" : "",
                   squirrel_quest_.active_collected_acorns(),
                   squirrel_quest_.active_required_acorns());
-  } else {
-    std::snprintf(text,
-                  sizeof(text),
-                  "Lanterns lit %d   Squirrels helped %d",
-                  firefly_loop_.active_lantern_index(),
-                  squirrel_quest_.completed_squirrels());
   }
   subtitles_set_hud_text(text);
 }

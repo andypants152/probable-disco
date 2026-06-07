@@ -24,6 +24,11 @@ class OwlEncounter {
   float heading() const { return heading_; }
   float perch_heading() const;
   float wing_pose() const { return wing_pose_; }
+  float head_yaw() const { return head_yaw_; }
+  float head_pitch() const { return head_pitch_; }
+  float head_roll() const { return head_roll_; }
+  float body_bob() const { return body_bob_; }
+  float blink() const { return blink_; }
   bool visible() const { return state_ != State::Gone; }
   bool prompt_visible() const { return prompt_visible_; }
   int dialogue_line() const { return dialogue_line_; }
@@ -44,6 +49,12 @@ class OwlEncounter {
   Vec3 perch_position_ = {};
   float heading_ = 0.0f;
   float wing_pose_ = 0.0f;
+  float head_yaw_ = 0.0f;
+  float head_pitch_ = 0.0f;
+  float head_roll_ = 0.0f;
+  float body_bob_ = 0.0f;
+  float blink_ = 0.0f;
+  float idle_timer_ = 0.0f;
   float timer_ = 0.0f;
   int dialogue_line_ = 0;
   int pending_dialogue_line_ = 0;

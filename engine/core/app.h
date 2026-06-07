@@ -109,6 +109,8 @@ class App {
   RenderFrame render_frame_commands_;
   bool initialized_ = false;
   bool previous_interact_down_ = false;
+  bool lantern_hud_revealed_ = false;
+  bool squirrel_hud_revealed_ = false;
   FrameStats frame_stats_;
 };
 

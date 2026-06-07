@@ -134,6 +134,26 @@ Vec3 rotate_y(Vec3 v, float heading) {
   };
 }
 
+Vec3 rotate_x(Vec3 v, float angle) {
+  const float s = std::sin(angle);
+  const float c = std::cos(angle);
+  return {
+    v.x,
+    v.y * c - v.z * s,
+    v.y * s + v.z * c,
+  };
+}
+
+Vec3 rotate_z(Vec3 v, float angle) {
+  const float s = std::sin(angle);
+  const float c = std::cos(angle);
+  return {
+    v.x * c - v.y * s,
+    v.x * s + v.y * c,
+    v.z,
+  };
+}
+
 std::uint8_t shade_channel(std::uint8_t channel, float shade) {
   const int value = static_cast<int>(static_cast<float>(channel) * shade);
   if (value < 0) {
@@ -396,6 +416,49 @@ void append_oriented_box(Mesh& mesh, const Box& box, Vec3 origin, float heading)
 
 void append_local_box(Mesh& mesh, Vec3 origin, float heading, Vec3 min, Vec3 max, PackedColor color) {
   append_oriented_box(mesh, {min, max, color}, origin, heading);
+}
+
+void append_local_box_with_transform(Mesh& mesh,
+                                     Vec3 origin,
+                                     float heading,
+                                     Vec3 min,
+                                     Vec3 max,
+                                     PackedColor color,
+                                     Vec3 pivot,
+                                     float local_yaw,
+                                     float local_pitch,
+                                     float local_roll) {
+  const Box box = {min, max, color};
+  for (const Face& face : kFaces) {
+    const Index start = static_cast<Index>(mesh.vertices.size());
+    const Vec3 local_normal = rotate_z(rotate_y(rotate_x(face.normal, local_pitch), local_yaw), local_roll);
+    const Vec3 normal = rotate_y(local_normal, heading);
+    const PackedColor shaded_color = shaded(static_cast<std::uint8_t>((box.color >> 24) & 0xffu),
+                                            static_cast<std::uint8_t>((box.color >> 16) & 0xffu),
+                                            static_cast<std::uint8_t>((box.color >> 8) & 0xffu),
+                                            face_shade(normal),
+                                            static_cast<std::uint8_t>(box.color & 0xffu));
+    for (const Vec3& corner : face.corners) {
+      const Vec3 local = {
+        box.min.x + (box.max.x - box.min.x) * corner.x,
+        box.min.y + (box.max.y - box.min.y) * corner.y,
+        box.min.z + (box.max.z - box.min.z) * corner.z,
+      };
+      const Vec3 posed = pivot + rotate_z(rotate_y(rotate_x(local - pivot, local_pitch), local_yaw), local_roll);
+      const Vec3 position = origin + rotate_y(posed, heading);
+      mesh.vertices.push_back(position);
+      mesh.normals.push_back(normal);
+      mesh.colors.push_back(shaded_color);
+      mesh.micro_positions.push_back({corner.x - 0.5f, corner.y - 0.5f, corner.z - 0.5f});
+    }
+
+    mesh.indices.push_back(start + 0);
+    mesh.indices.push_back(start + 1);
+    mesh.indices.push_back(start + 2);
+    mesh.indices.push_back(start + 0);
+    mesh.indices.push_back(start + 2);
+    mesh.indices.push_back(start + 3);
+  }
 }
 
 void append_surface_tiles(Mesh& mesh,
@@ -1154,43 +1217,76 @@ void append_owl_perch_mesh(Mesh& mesh, Vec3 owl_position, float heading_radians)
                    pack_rgba(138, 93, 60));
 }
 
-void append_owl_mesh(Mesh& mesh, Vec3 owl_position, float heading_radians, float wing_pose) {
+void append_owl_mesh(Mesh& mesh,
+                     Vec3 owl_position,
+                     float heading_radians,
+                     float wing_pose,
+                     float head_yaw,
+                     float head_pitch,
+                     float head_roll,
+                     float body_bob,
+                     float blink) {
   const float flap = std::max(0.0f, std::min(1.0f, wing_pose));
   const float left_wing_lift = flap * 0.34f;
   const float right_wing_lift = flap * 0.34f;
+  const float eye_open = 1.0f - std::max(0.0f, std::min(1.0f, blink)) * 0.82f;
+  const float eye_center_y = 1.225f;
+  const float eye_half_height = 0.065f * eye_open;
+  const Vec3 posed_position = owl_position + Vec3{0.0f, body_bob, 0.0f};
+  const Vec3 head_pivot = {0.0f, 1.03f, -0.03f};
 
-  append_local_box(mesh, owl_position, heading_radians,
+  append_local_box(mesh, posed_position, heading_radians,
                    {-0.41f, 0.0f, -0.31f},
                    {0.41f, 1.02f, 0.31f},
                    pack_rgba(95, 75, 58));
-  append_local_box(mesh, owl_position, heading_radians,
+  append_local_box(mesh, posed_position, heading_radians,
                    {-0.72f, 0.04f + left_wing_lift, -0.27f},
                    {-0.42f, 0.86f + left_wing_lift, 0.27f},
                    pack_rgba(63, 56, 54));
-  append_local_box(mesh, owl_position, heading_radians,
+  append_local_box(mesh, posed_position, heading_radians,
                    {0.42f, 0.04f + right_wing_lift, -0.27f},
                    {0.72f, 0.86f + right_wing_lift, 0.27f},
                    pack_rgba(63, 56, 54));
-  append_local_box(mesh, owl_position, heading_radians,
-                   {-0.43f, 0.84f, -0.29f},
-                   {0.43f, 1.46f, 0.29f},
-                   pack_rgba(95, 75, 58));
-  append_local_box(mesh, owl_position, heading_radians,
-                   {-0.34f, 0.98f, -0.37f},
-                   {0.34f, 1.32f, -0.29f},
-                   pack_rgba(216, 206, 178));
-  append_local_box(mesh, owl_position, heading_radians,
-                   {-0.07f, 0.98f, -0.48f},
-                   {0.07f, 1.12f, -0.36f},
-                   pack_rgba(255, 185, 67));
-  append_local_box(mesh, owl_position, heading_radians,
-                   {-0.25f, 1.16f, -0.43f},
-                   {-0.12f, 1.29f, -0.38f},
-                   pack_rgba(143, 255, 242));
-  append_local_box(mesh, owl_position, heading_radians,
-                   {0.12f, 1.16f, -0.43f},
-                   {0.25f, 1.29f, -0.38f},
-                   pack_rgba(143, 255, 242));
+  append_local_box_with_transform(mesh, posed_position, heading_radians,
+                                  {-0.43f, 0.84f, -0.29f},
+                                  {0.43f, 1.46f, 0.29f},
+                                  pack_rgba(95, 75, 58),
+                                  head_pivot,
+                                  head_yaw,
+                                  head_pitch,
+                                  head_roll);
+  append_local_box_with_transform(mesh, posed_position, heading_radians,
+                                  {-0.34f, 0.98f, -0.37f},
+                                  {0.34f, 1.32f, -0.29f},
+                                  pack_rgba(216, 206, 178),
+                                  head_pivot,
+                                  head_yaw,
+                                  head_pitch,
+                                  head_roll);
+  append_local_box_with_transform(mesh, posed_position, heading_radians,
+                                  {-0.07f, 0.98f, -0.48f},
+                                  {0.07f, 1.12f, -0.36f},
+                                  pack_rgba(255, 185, 67),
+                                  head_pivot,
+                                  head_yaw,
+                                  head_pitch,
+                                  head_roll);
+  append_local_box_with_transform(mesh, posed_position, heading_radians,
+                                  {-0.25f, eye_center_y - eye_half_height, -0.43f},
+                                  {-0.12f, eye_center_y + eye_half_height, -0.38f},
+                                  pack_rgba(143, 255, 242),
+                                  head_pivot,
+                                  head_yaw,
+                                  head_pitch,
+                                  head_roll);
+  append_local_box_with_transform(mesh, posed_position, heading_radians,
+                                  {0.12f, eye_center_y - eye_half_height, -0.43f},
+                                  {0.25f, eye_center_y + eye_half_height, -0.38f},
+                                  pack_rgba(143, 255, 242),
+                                  head_pivot,
+                                  head_yaw,
+                                  head_pitch,
+                                  head_roll);
 }
 
 constexpr float FIREFLY_CORE_SIZE = 0.28f;
