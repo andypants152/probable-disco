@@ -73,6 +73,7 @@ class FireflyLoop {
   };
 
   void activate_lantern(const TerrainGenerator& generator, int sequence);
+  Vec3 lantern_position_for_sequence(const TerrainGenerator& generator, int sequence) const;
   void spawn_fireflies_for_lantern(const TerrainGenerator& generator, int index);
   Vec3 carried_firefly_position(Vec3 fox_position, float fox_heading, int index) const;
   float carried_firefly_glow_intensity(int index) const;
