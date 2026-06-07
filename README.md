@@ -1,26 +1,24 @@
-# Probable Disco Voxel Forest
+# Voxel Forest
 
-Portable C++ voxel forest engine with shared game code, a shared renderer layer, and thin platform layers for WebAssembly and Nintendo Switch homebrew.
+Portable C++ voxel forest game prototype with shared engine/game code and thin platform layers for WebAssembly and Nintendo Switch homebrew.
 
-The active renderer path is SDL/OpenGL ES-style platform glue plus shared C++ renderer code. Browser and Switch builds now submit the same `RenderFrame` command stream for voxel meshes, simple point lights, sprite/quad overlays, and bitmap-font subtitles. New gameplay/render features should go through this shared path.
+The active renderer path is shared OpenGL ES-style renderer code behind platform-specific SDL/WebGL context setup. Browser and Switch builds submit the same `RenderFrame` command stream for terrain chunks, dynamic voxel actors, gameplay lights, quad overlays, and bitmap-font subtitles.
 
-## Current Milestone
+## Current State
 
-- Fixed 32x32x32 voxel chunk.
-- Voxel types: air, grass, dirt, stone, bark, leaves.
-- Deterministic low-variation terrain sampled by world coordinate.
+- Fixed `32x32x32` voxel chunks with deterministic terrain generated from world coordinates.
 - Streamed procedural forest window around the fox.
+- Voxel types: air, grass, dirt, stone, bark, leaves.
 - Face-culling mesher that emits only visible cube faces.
-- Dark moonlit art direction with dense forest fog and voxel face outlines.
-- Static forest dressing: rocks, stumps, fallen logs, mushrooms, a moon clearing, an owl perch, and a cyan charm set piece.
-- Shared-core voxel fox mesh added to the scene.
-- Third-person fox movement and camera follow in the shared core.
-- Platform-neutral mesh with positions, normals, packed colors, micro face coordinates, and indices.
-- Shared `RenderCommand` frame submission for static mesh, dynamic mesh, and subtitle overlay draws.
-- Shared `QuadBatch`/bitmap font subtitle path. The test subtitle is `Oh good, you're awake.`
-- Shared camera state and update loop.
-- Browser platform renders through Emscripten WebGL2 using the shared GLES renderer.
-- Switch platform renders through SDL2 and the same shared GLES renderer.
+- Moonlit forest art direction with dense fog, voxel face outlines, point lights, and glow effects.
+- Static forest dressing: rocks, stumps, fallen logs, mushrooms, a moon clearing, an owl perch, lanterns, and a cyan charm set piece.
+- Shared-core voxel fox mesh, third-person movement, and orbit camera.
+- Owl encounter with cinematic camera shots and subtitle-driven dialogue.
+- Firefly and lantern loop with collectible fireflies, carried firefly lights, lantern deposits, and debug progression controls.
+- Squirrel quest actors with approach, dialogue, animation, and completion events.
+- Shared forest audio hooks and platform-neutral subtitle composition.
+- Browser build renders through Emscripten WebGL2.
+- Switch build renders through SDL2 and the same shared GLES renderer.
 
 ## Web Build
 
@@ -42,37 +40,22 @@ Open `http://localhost:8080`. The deployable static output is written to `dist/w
 dist/web/index.html
 dist/web/index.js
 dist/web/index.wasm
+dist/web/assets/
 ```
 
 `build/web/` is only the CMake build directory. Do not deploy it directly.
 
-Controls:
+Web controls:
 
-- `WASD`: move the fox
-- Gamepad left stick or D-pad: move the fox
+- `WASD` or arrow keys: move the fox
+- `Space`, `Enter`, or `E`: interact/confirm
 - Mouse drag: orbit the third-person camera
+- `Esc`: pause input
+- Gamepad left stick or D-pad: move the fox
 - Gamepad right stick: orbit the third-person camera
+- Gamepad face button: interact/confirm
 - Gamepad dev controls: tap `L1`/`R1` to lower/raise the gameplay light cap, `L2` to collect the active lantern's fireflies, `R2` to force-deposit and advance the lantern
-- On phones and tablets, touch controls appear automatically:
-  left stick moves, right stick looks/turns, and `A` interacts.
-
-## GitHub Pages Deployment
-
-The workflow at `.github/workflows/pages.yml` builds the Web/WASM target on every push to `main` and uploads `dist/web/` to GitHub Pages. It can also be run manually from the Actions tab.
-
-To enable it in GitHub:
-
-```text
-Settings -> Pages -> Source -> GitHub Actions
-```
-
-The deployed page will be available at:
-
-```text
-https://USERNAME.github.io/REPOSITORY_NAME/
-```
-
-The web build is static and uses relative generated file paths, so it can run from a repository subpath instead of only from a domain root.
+- On phones and tablets, touch controls appear automatically: left stick moves, right stick looks/turns, and `A` interacts
 
 ## Switch Build
 
@@ -96,6 +79,7 @@ Switch controls:
 
 - Left stick or D-pad: move the fox
 - Right stick: orbit the third-person camera
+- `A`: interact/confirm
 - `+`: exit
 - Dev controls: tap `L`/`R` to lower/raise the gameplay light cap, `ZL` to collect the active lantern's fireflies, `ZR` to force-deposit and advance the lantern
 
@@ -110,14 +94,25 @@ This produces `build/switch-profile/probable-disco.nro`; use it for symbols or d
 ## Project Layout
 
 ```text
-engine/core/                     Shared app, audio, platform interface, and subtitles
-engine/game/                     Shared camera and fox gameplay code
-engine/world/                    Shared voxel chunks, generation, and meshing
-engine/render/                   Shared renderer API, RenderCommand frame data, GLES renderer, QuadBatch, bitmap font subtitles
-engine/math/                     Shared math helpers
-platform/web/                    Emscripten browser entry point and WebGL context glue
-platform/switch/                 devkitPro/libnx entry point and SDL/GLES context glue
-assets/                          Shared assets; subtitle font files are no longer used by the active bitmap-font path
+engine/core/        Shared app loop, audio hooks, platform interface, and subtitles
+engine/game/        Shared camera, fox, owl, squirrel, conversation, and firefly gameplay code
+engine/world/       Shared voxel chunks, terrain generation, streaming, and meshing
+engine/render/      Shared renderer API, RenderCommand frame data, GLES renderer, QuadBatch, and bitmap font subtitles
+engine/math/        Shared math helpers
+platform/web/       Emscripten browser entry point and WebGL context glue
+platform/switch/    devkitPro/libnx entry point and SDL/GLES context glue
+assets/             Shared runtime assets
+dist/               Generated deployable build output
+build/              Generated local build directories
 ```
 
-Platform-specific files should own lifecycle, input, window/context creation, and presentation only. Game state, voxel meshing, lighting data, sprite/quad batching, and subtitle composition belong in shared code.
+## Development Notes
+
+Platform-specific files should own lifecycle, input, window/context creation, and presentation only. Game state, voxel meshing, lighting data, sprite/quad batching, audio state, and subtitle composition belong in shared code.
+
+Use the root `Makefile` for packaged outputs:
+
+```sh
+make web
+make switch
+```

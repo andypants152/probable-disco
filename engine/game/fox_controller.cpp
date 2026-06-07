@@ -13,6 +13,7 @@ constexpr float kFoxMoveSpeed = 8.5f;
 constexpr float kFoxHalfWidth = 0.82f;
 constexpr float kFoxFrontFootZ = 0.72f;
 constexpr float kFoxRearFootZ = -0.68f;
+constexpr float kPi = 3.14159265358979323846f;
 
 int floor_to_int(float value) {
   return static_cast<int>(std::floor(value));
@@ -29,6 +30,20 @@ float lerp(float a, float b, float t) {
 
 float clamped_axis(float value) {
   return std::max(-1.0f, std::min(1.0f, value));
+}
+
+float clamp01(float value) {
+  return std::max(0.0f, std::min(1.0f, value));
+}
+
+bool pose_changed(const FoxAnimationPose& a, const FoxAnimationPose& b) {
+  return std::fabs(a.walk_blend - b.walk_blend) > 0.0005f ||
+      std::fabs(a.walk_cycle - b.walk_cycle) > 0.0005f ||
+      std::fabs(a.body_bob - b.body_bob) > 0.0005f ||
+      std::fabs(a.body_pitch - b.body_pitch) > 0.0005f ||
+      std::fabs(a.head_bob - b.head_bob) > 0.0005f ||
+      std::fabs(a.tail_sway - b.tail_sway) > 0.0005f ||
+      std::fabs(a.ear_twitch - b.ear_twitch) > 0.0005f;
 }
 
 float interpolated_terrain_height(const TerrainGenerator& generator, float x, float z) {
@@ -78,7 +93,12 @@ void FoxController::init(const TerrainGenerator& generator) {
   position_.z = 0.0f;
   heading_ = 0.0f;
   movement_speed_ = 0.0f;
+  walk_blend_ = 0.0f;
+  walk_cycle_ = 0.0f;
+  idle_time_ = 0.0f;
   moved_this_frame_ = false;
+  animation_changed_ = false;
+  animation_pose_ = {};
   position_.y = fox_support_height(generator, position_, heading_) + 1.0f;
 }
 
@@ -112,11 +132,65 @@ bool FoxController::update(const CameraInput& input, const TerrainGenerator& gen
   position_.y = fox_support_height(generator, position_, heading_) + 1.0f;
   const bool vertical_moved = std::fabs(position_.y - previous_y) > 0.0005f;
   moved_this_frame_ = horizontal_moved || vertical_moved;
+  update_animation(input.delta_time);
   return moved_this_frame_;
 }
 
 Vec3 FoxController::forward() const {
   return {std::sin(heading_), 0.0f, std::cos(heading_)};
+}
+
+void FoxController::update_animation(float delta_time) {
+  const FoxAnimationPose previous_pose = animation_pose_;
+  const float dt = std::max(0.0f, std::min(delta_time, 0.10f));
+  idle_time_ += dt;
+
+  const float speed_t = clamp01(movement_speed_ / kFoxMoveSpeed);
+  const float target_walk = speed_t > 0.02f ? speed_t : 0.0f;
+  const float blend_rate = target_walk > walk_blend_ ? 9.5f : 6.0f;
+  walk_blend_ += (target_walk - walk_blend_) * clamp01(dt * blend_rate);
+  if (walk_blend_ < 0.001f && target_walk <= 0.0f) {
+    walk_blend_ = 0.0f;
+  }
+
+  if (walk_blend_ > 0.001f) {
+    const float cycle_speed = 4.6f + movement_speed_ * 0.92f;
+    walk_cycle_ += dt * cycle_speed;
+    if (walk_cycle_ > kPi * 64.0f) {
+      walk_cycle_ = std::fmod(walk_cycle_, kPi * 2.0f);
+    }
+  }
+
+  const float idle_blend = 1.0f - clamp01(walk_blend_);
+  const float idle_breath = 0.5f + 0.5f * std::sin(idle_time_ * 1.45f);
+  const float walk_step = 0.5f - 0.5f * std::cos(walk_cycle_ * 2.0f);
+
+  float tail_flick = 0.0f;
+  const float tail_window = std::fmod(idle_time_ + 0.85f, 5.8f);
+  if (tail_window > 4.95f) {
+    const float t = clamp01((tail_window - 4.95f) / 0.55f);
+    tail_flick = std::sin(t * kPi) * std::sin(t * kPi * 3.0f);
+  }
+
+  float ear_twitch = 0.0f;
+  const float ear_window = std::fmod(idle_time_ + 2.1f, 7.3f);
+  if (ear_window < 0.28f) {
+    const float t = clamp01(ear_window / 0.28f);
+    ear_twitch = std::sin(t * kPi);
+  }
+
+  animation_pose_.walk_blend = walk_blend_;
+  animation_pose_.walk_cycle = walk_cycle_;
+  animation_pose_.body_bob = walk_blend_ * (0.035f + 0.075f * walk_step) +
+      idle_blend * (0.016f + 0.018f * idle_breath);
+  animation_pose_.body_pitch = walk_blend_ * (0.065f + 0.020f * std::sin(walk_cycle_ * 2.0f + 0.45f)) +
+      idle_blend * (0.008f * (idle_breath - 0.5f));
+  animation_pose_.head_bob = walk_blend_ * (0.025f * std::sin(walk_cycle_ * 2.0f + 0.70f)) +
+      idle_blend * (0.010f * (idle_breath - 0.5f));
+  animation_pose_.tail_sway = walk_blend_ * std::sin(walk_cycle_ + 0.35f) +
+      idle_blend * tail_flick;
+  animation_pose_.ear_twitch = idle_blend * ear_twitch;
+  animation_changed_ = dt > 0.0f && pose_changed(previous_pose, animation_pose_);
 }
 
 }  // namespace voxel

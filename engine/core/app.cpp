@@ -126,6 +126,7 @@ void App::frame(Renderer& renderer, const CameraInput& input) {
   }
 
   const bool fox_moved = fox_controller_.update(gameplay_input, generator_, camera_);
+  const bool fox_animation_changed = fox_controller_.animation_changed();
   const Vec3 fox_position = fox_controller_.position();
   const float fox_heading = fox_controller_.heading();
   const bool owl_changed = owl_encounter_.update(gameplay_input.delta_time,
@@ -312,6 +313,7 @@ void App::frame(Renderer& renderer, const CameraInput& input) {
       gameplay_structural_changed || gameplay_animation_upload_due;
   const bool dynamic_mesh_update_needed =
       fox_moved ||
+      fox_animation_changed ||
       owl_changed ||
       gameplay_mesh_changed ||
       squirrel_mesh_changed ||
@@ -330,7 +332,7 @@ void App::frame(Renderer& renderer, const CameraInput& input) {
     }
     if (dynamic_mesh_update_needed) {
       const auto fox_rebuild_start = Clock::now();
-      if (fox_moved || chunk_changed) {
+      if (fox_moved || fox_animation_changed || chunk_changed) {
         rebuild_fox_mesh();
       }
       rebuild_dynamic_mesh();
@@ -349,7 +351,7 @@ void App::frame(Renderer& renderer, const CameraInput& input) {
     }
   } else if (dynamic_mesh_update_needed) {
     const auto fox_rebuild_start = Clock::now();
-    if (fox_moved || chunk_changed) {
+    if (fox_moved || fox_animation_changed || chunk_changed) {
       rebuild_fox_mesh();
     }
     rebuild_dynamic_mesh();
@@ -405,7 +407,10 @@ void App::shutdown(Renderer& renderer) {
 
 void App::rebuild_fox_mesh() {
   fox_mesh_.clear();
-  append_fox_mesh(fox_mesh_, fox_controller_.position(), fox_controller_.heading());
+  append_fox_mesh(fox_mesh_,
+                  fox_controller_.position(),
+                  fox_controller_.heading(),
+                  fox_controller_.animation_pose());
 }
 
 void App::rebuild_dynamic_mesh() {
