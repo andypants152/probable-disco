@@ -19,15 +19,13 @@ constexpr float kOwlFlyAwayHeading = 0.0f;
 constexpr float kOwlTalkSeconds = 5.35f;
 constexpr float kOwlFlySeconds = 2.6f;
 constexpr float kOwlSecondLineTime = 1.95f;
-constexpr float kOwlReturnArriveSeconds = 1.20f;
-constexpr float kOwlReturnFirstLineSeconds = 2.35f;
-constexpr float kOwlReturnSecondLineSeconds = 4.25f;
-constexpr float kOwlReturnThirdLineSeconds = 3.95f;
+constexpr float kOwlReturnArriveSeconds = 1.90f;
+constexpr float kOwlReturnLineSeconds = 2.45f;
+constexpr float kOwlReturnFlySeconds = 1.85f;
 constexpr float kOwlReturnPerchHeight = 1.78f;
 constexpr float kOwlReturnMinLanternDistance = 8.8f;
 constexpr float kOwlReturnMaxLanternDistance = 14.2f;
 constexpr float kOwlReturnFoxClearance = 5.0f;
-constexpr float kOwlReturnCompletedSquirrelClearance = 14.0f;
 constexpr int kOwlReturnCandidateCount = 40;
 constexpr int kWorldDressingStep = 6;
 constexpr int kMushroomCandidateStep = 3;
@@ -35,9 +33,7 @@ constexpr float kMushroomSpawnChance = 0.13f;
 constexpr float kMushroomClusterChance = 0.24f;
 constexpr float kMushroomClusterRadius = 2.35f;
 constexpr int kReturnArrivalLine = 100;
-constexpr int kReturnFirstLine = 101;
-constexpr int kReturnSecondLine = 102;
-constexpr int kReturnThirdLine = 103;
+constexpr int kReturnFlybyLine = 101;
 constexpr float kOwlMaxHeadYaw = 3.14159265358979323846f;
 constexpr float kOwlMaxHeadPitch = 0.34f;
 constexpr float kOwlIdleRufflePeriod = 6.4f;
@@ -267,7 +263,6 @@ bool near_likely_mushroom(float x, float z, float clearance) {
 bool can_place_return_perch(const TerrainGenerator& generator,
                             Vec3 anchor_position,
                             Vec3 fox_position,
-                            Vec3 avoid_position,
                             float x,
                             float z) {
   const Vec3 candidate = {x, 0.0f, z};
@@ -276,9 +271,6 @@ bool can_place_return_perch(const TerrainGenerator& generator,
     return false;
   }
   if (horizontal_distance(candidate, fox_position) < kOwlReturnFoxClearance) {
-    return false;
-  }
-  if (horizontal_distance(candidate, avoid_position) < kOwlReturnCompletedSquirrelClearance) {
     return false;
   }
   if (!is_clear_ground(generator, x, z, 5)) {
@@ -307,7 +299,8 @@ void OwlEncounter::init(const TerrainGenerator& generator) {
   position_ = perch_position_;
   return_perch_position_ = {};
   return_start_position_ = {};
-  return_lantern_position_ = {};
+  return_fly_away_position_ = {};
+  return_line_ = "";
   heading_ = kOwlDefaultHeading;
   return_heading_ = kOwlDefaultHeading;
   wing_pose_ = 0.0f;
@@ -390,7 +383,7 @@ bool OwlEncounter::update(float dt, const TerrainGenerator& generator, Vec3 fox_
     const float t = smoothstep(raw_t);
     const Vec3 landing = return_perch_position_;
     position_ = return_start_position_ + (landing - return_start_position_) * t +
-        Vec3{0.0f, std::sin(raw_t * 3.14159265358979323846f) * 0.85f, 0.0f};
+        Vec3{0.0f, std::sin(raw_t * 3.14159265358979323846f) * 1.35f, 0.0f};
     heading_ = return_heading_;
     wing_pose_ = 0.34f + 0.66f * std::fabs(std::sin(timer_ * 18.0f));
     body_bob_ = 0.0f;
@@ -401,40 +394,40 @@ bool OwlEncounter::update(float dt, const TerrainGenerator& generator, Vec3 fox_
       timer_ = 0.0f;
       position_ = return_perch_position_;
       wing_pose_ = 0.0f;
-      dialogue_line_ = kReturnFirstLine;
-      pending_dialogue_line_ = kReturnFirstLine;
+      dialogue_line_ = kReturnFlybyLine;
+      pending_dialogue_line_ = kReturnFlybyLine;
     }
   } else if (state_ == State::ReturnTalking) {
     position_ = return_perch_position_;
     heading_ = return_heading_;
     idle_timer_ += dt;
     timer_ += dt;
-    if (dialogue_line_ == kReturnFirstLine && timer_ >= kOwlReturnFirstLineSeconds) {
-      dialogue_line_ = kReturnSecondLine;
-      pending_dialogue_line_ = kReturnSecondLine;
-    } else if (dialogue_line_ == kReturnSecondLine &&
-               timer_ >= kOwlReturnFirstLineSeconds + kOwlReturnSecondLineSeconds) {
-      dialogue_line_ = kReturnThirdLine;
-      pending_dialogue_line_ = kReturnThirdLine;
-    } else if (dialogue_line_ == kReturnThirdLine &&
-               timer_ >= kOwlReturnFirstLineSeconds +
-                   kOwlReturnSecondLineSeconds +
-                   kOwlReturnThirdLineSeconds) {
-      state_ = State::ReturnPerched;
+    if (timer_ >= kOwlReturnLineSeconds) {
+      state_ = State::ReturnFlying;
       timer_ = 0.0f;
       dialogue_line_ = 0;
-      return_completed_ = true;
     }
-  } else if (state_ == State::ReturnPerched) {
-    position_ = return_perch_position_;
-    heading_ = return_heading_;
-    idle_timer_ += dt;
-    timer_ = 0.0f;
-    dialogue_line_ = 0;
+  } else if (state_ == State::ReturnFlying) {
+    timer_ += dt;
+    const float raw_t = std::max(0.0f, std::min(1.0f, timer_ / kOwlReturnFlySeconds));
+    const float t = smoothstep(raw_t);
+    position_ = return_perch_position_ + (return_fly_away_position_ - return_perch_position_) * t +
+        Vec3{0.0f, 2.7f * t * t, 0.0f};
+    heading_ = lerp(return_heading_, kOwlFlyAwayHeading, smoothstep(raw_t));
+    wing_pose_ = 0.30f + 0.70f * std::fabs(std::sin(timer_ * 18.0f));
+    body_bob_ = 0.0f;
+    blink_ = 0.0f;
+    head_roll_ = 0.0f;
+    if (timer_ >= kOwlReturnFlySeconds) {
+      state_ = State::Gone;
+      return_perch_visible_ = false;
+      return_completed_ = true;
+      wing_pose_ = 0.0f;
+    }
   }
 
   if (state_ == State::Waiting || state_ == State::Talking ||
-      state_ == State::ReturnTalking || state_ == State::ReturnPerched) {
+      state_ == State::ReturnTalking) {
     const float breath = 0.5f + 0.5f * std::sin(idle_timer_ * 1.35f);
     body_bob_ = 0.012f + 0.026f * breath;
     head_roll_ = std::sin(idle_timer_ * 0.78f + 0.65f) * 0.025f;
@@ -460,7 +453,7 @@ bool OwlEncounter::update(float dt, const TerrainGenerator& generator, Vec3 fox_
   float target_head_yaw = 0.0f;
   float target_head_pitch = 0.0f;
   if (state_ == State::Waiting || state_ == State::Talking ||
-      state_ == State::ReturnTalking || state_ == State::ReturnPerched) {
+      state_ == State::ReturnTalking) {
     const Vec3 head_position = position_ + Vec3{0.0f, 1.16f, 0.0f};
     const Vec3 to_fox = fox_position + Vec3{0.0f, 1.0f, 0.0f} - head_position;
     const Vec3 local_to_fox = rotate_y(to_fox, -heading_);
@@ -494,8 +487,8 @@ bool OwlEncounter::update(float dt, const TerrainGenerator& generator, Vec3 fox_
 bool OwlEncounter::schedule_return(const TerrainGenerator& generator,
                                    Vec3 anchor_position,
                                    Vec3 fox_position,
-                                   Vec3 avoid_position) {
-  if (state_ != State::Gone || return_completed_ || return_perch_visible_) {
+                                   const char* line) {
+  if (state_ != State::Gone || return_perch_visible_ || line == nullptr || line[0] == '\0') {
     return false;
   }
 
@@ -510,7 +503,7 @@ bool OwlEncounter::schedule_return(const TerrainGenerator& generator,
             (kOwlReturnMaxLanternDistance - kOwlReturnMinLanternDistance);
     const float x = anchor_position.x + std::cos(angle) * radius;
     const float z = anchor_position.z + std::sin(angle) * radius;
-    if (!can_place_return_perch(generator, anchor_position, fox_position, avoid_position, x, z)) {
+    if (!can_place_return_perch(generator, anchor_position, fox_position, x, z)) {
       continue;
     }
     const Vec3 candidate = perched_position(generator, x, z);
@@ -529,7 +522,7 @@ bool OwlEncounter::schedule_return(const TerrainGenerator& generator,
   }
 
   return_perch_position_ = best_position;
-  return_lantern_position_ = anchor_position;
+  return_line_ = line;
   return_heading_ = std::atan2(fox_position.x - return_perch_position_.x,
                                fox_position.z - return_perch_position_.z);
   const Vec3 away_from_fox = normalize(Vec3{
@@ -538,7 +531,8 @@ bool OwlEncounter::schedule_return(const TerrainGenerator& generator,
       return_perch_position_.z - fox_position.z,
   });
   const Vec3 arrival_direction = length(away_from_fox) > 0.001f ? away_from_fox : Vec3{0.0f, 0.0f, -1.0f};
-  return_start_position_ = return_perch_position_ + arrival_direction * 7.0f + Vec3{0.0f, 3.2f, 0.0f};
+  return_start_position_ = return_perch_position_ + arrival_direction * 11.0f + Vec3{0.0f, 4.2f, 0.0f};
+  return_fly_away_position_ = return_perch_position_ + arrival_direction * 10.0f + Vec3{0.0f, 2.4f, 0.0f};
   position_ = return_start_position_;
   heading_ = return_heading_;
   state_ = State::ReturnArriving;
@@ -570,18 +564,9 @@ bool OwlEncounter::consume_dialogue_event(DialogueEvent& event) {
     event.seconds = kOwlReturnArriveSeconds;
     event.show_subtitle = false;
     event.target_position = return_perch_position_;
-  } else if (pending_dialogue_line_ == kReturnFirstLine) {
-    event.text = "You heard the small one.";
-    event.seconds = kOwlReturnFirstLineSeconds;
-    event.target_position = return_perch_position_;
-  } else if (pending_dialogue_line_ == kReturnSecondLine) {
-    event.text = "That is how the forest begins to answer.";
-    event.seconds = kOwlReturnSecondLineSeconds;
-    event.target_position = return_lantern_position_;
-    event.focus_target = true;
-  } else if (pending_dialogue_line_ == kReturnThirdLine) {
-    event.text = "Halfway is not where your paws are. It is what you have learned to notice.";
-    event.seconds = kOwlReturnThirdLineSeconds;
+  } else if (pending_dialogue_line_ == kReturnFlybyLine) {
+    event.text = return_line_;
+    event.seconds = kOwlReturnLineSeconds;
     event.target_position = return_perch_position_;
   }
   pending_dialogue_line_ = 0;

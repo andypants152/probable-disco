@@ -22,7 +22,7 @@ class OwlEncounter {
   bool schedule_return(const TerrainGenerator& generator,
                        Vec3 anchor_position,
                        Vec3 fox_position,
-                       Vec3 avoid_position);
+                       const char* line);
   bool consume_dialogue_event(DialogueEvent& event);
 
   Vec3 position() const { return position_; }
@@ -42,7 +42,9 @@ class OwlEncounter {
   bool prompt_visible() const { return prompt_visible_; }
   int dialogue_line() const { return dialogue_line_; }
   bool talking() const { return state_ == State::Talking || state_ == State::ReturnTalking; }
-  bool flying() const { return state_ == State::Flying || state_ == State::ReturnArriving; }
+  bool flying() const {
+    return state_ == State::Flying || state_ == State::ReturnArriving || state_ == State::ReturnFlying;
+  }
   bool gone() const { return state_ == State::Gone; }
   bool return_completed() const { return return_completed_; }
 
@@ -54,7 +56,7 @@ class OwlEncounter {
     Gone,
     ReturnArriving,
     ReturnTalking,
-    ReturnPerched,
+    ReturnFlying,
   };
 
   State state_ = State::Waiting;
@@ -62,7 +64,8 @@ class OwlEncounter {
   Vec3 perch_position_ = {};
   Vec3 return_perch_position_ = {};
   Vec3 return_start_position_ = {};
-  Vec3 return_lantern_position_ = {};
+  Vec3 return_fly_away_position_ = {};
+  const char* return_line_ = "";
   float heading_ = 0.0f;
   float return_heading_ = 0.0f;
   float wing_pose_ = 0.0f;
