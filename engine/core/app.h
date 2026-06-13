@@ -85,6 +85,20 @@ class App {
   void rebuild_gameplay_lights();
   void update_lantern_hud();
   void update_camera(const CameraInput& input);
+  bool maybe_schedule_owl_return(Vec3 fox_position,
+                                 float dt,
+                                 bool fox_moved,
+                                 bool squirrel_events_waiting);
+  bool begin_owl_dialogue(const OwlEncounter::DialogueEvent& owl_dialogue,
+                          Vec3 fox_position,
+                          bool& gameplay_changed,
+                          bool& gameplay_structural_changed);
+
+  enum class OwlReturnMilestone {
+    Locked,
+    Pending,
+    Seen,
+  };
 
   TerrainGenerator generator_;
   TerrainStreamer terrain_streamer_;
@@ -111,6 +125,9 @@ class App {
   bool previous_interact_down_ = false;
   bool lantern_hud_revealed_ = false;
   bool squirrel_hud_revealed_ = false;
+  OwlReturnMilestone owl_return_milestone_ = OwlReturnMilestone::Locked;
+  Vec3 owl_return_completed_squirrel_position_ = {};
+  float owl_return_quiet_seconds_ = 0.0f;
   FrameStats frame_stats_;
 };
 

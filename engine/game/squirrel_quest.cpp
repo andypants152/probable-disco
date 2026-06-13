@@ -691,6 +691,10 @@ bool SquirrelQuest::squirrel_position(std::uint32_t squirrel_id, Vec3& position)
   return false;
 }
 
+bool SquirrelQuest::fox_near_auto_talk_squirrel(Vec3 fox_position) const {
+  return nearest_squirrel(fox_position, kSquirrelAutoTalkRadius) != nullptr;
+}
+
 void SquirrelQuest::drain_approach_events(std::vector<ApproachEvent>& events) {
   events.insert(events.end(), approach_events_.begin(), approach_events_.end());
   approach_events_.clear();

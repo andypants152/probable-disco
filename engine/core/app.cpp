@@ -20,6 +20,11 @@ constexpr float kCameraDistance = 13.0f;
 constexpr float kCameraTargetHeight = 1.35f;
 constexpr float kSquirrelAnimationUploadInterval = 0.10f;
 constexpr float kGameplayAnimationUploadInterval = 0.05f;
+constexpr float kOwlReturnPreferredDistance = 22.0f;
+constexpr float kOwlReturnFallbackDistance = 18.0f;
+constexpr float kOwlReturnFallbackQuietSeconds = 5.0f;
+constexpr float kOwlReturnMinimumQuietSeconds = 0.35f;
+constexpr std::uint32_t kOwlSpeakerId = 0x0f11u;
 
 using Clock = std::chrono::steady_clock;
 
@@ -65,6 +70,9 @@ bool App::init(Renderer& renderer) {
   squirrel_quest_.init(generator_, firefly_loop_);
   lantern_hud_revealed_ = false;
   squirrel_hud_revealed_ = false;
+  owl_return_milestone_ = OwlReturnMilestone::Locked;
+  owl_return_completed_squirrel_position_ = {};
+  owl_return_quiet_seconds_ = 0.0f;
   rebuild_dynamic_mesh();
   render_frame_commands_.commands.reserve(3);
 
@@ -154,33 +162,10 @@ void App::frame(Renderer& renderer, const CameraInput& input) {
   bool squirrel_animation_changed = squirrel_update.animation_changed;
   OwlEncounter::DialogueEvent owl_dialogue = {};
   if (owl_encounter_.consume_dialogue_event(owl_dialogue)) {
-    if (owl_dialogue.line == 1 && !firefly_loop_.fireflies_unlocked()) {
-      firefly_loop_.unlock_fireflies(generator_);
-      gameplay_changed = true;
-      gameplay_structural_changed = true;
-    }
-    if (owl_dialogue.line == 2) {
-      lantern_hud_revealed_ = true;
-    }
-    ConversationController::Request request = {};
-    request.speaker_position = owl_encounter_.position();
-    request.listener_position = fox_position;
-    request.speaker_id = 0x0f11u;
-    request.text = owl_dialogue.text;
-    request.seconds = owl_dialogue.seconds;
-    request.allow_confirm_skip = false;
-    if (owl_dialogue.line == 1) {
-      request.shot = ConversationController::Shot::SpeakerCloseUp;
-    } else {
-      request.shot = ConversationController::Shot::LookAtFocus;
-      request.focus_position = firefly_loop_.farthest_firefly_position(fox_position);
-    }
-    if (conversation_controller_.active()) {
-      conversation_controller_.replace_line(camera_, request);
-    } else {
-      conversation_controller_.begin(camera_, request);
-    }
-    conversation_started = true;
+    conversation_started = begin_owl_dialogue(owl_dialogue,
+                                             fox_position,
+                                             gameplay_changed,
+                                             gameplay_structural_changed);
   }
   if (!conversation_controller_.active() && !conversation_started) {
     squirrel_approach_events_.clear();
@@ -205,6 +190,9 @@ void App::frame(Renderer& renderer, const CameraInput& input) {
       squirrel_quest_.squirrel_position(conversation_controller_.speaker_id(), active_squirrel_position);
   if (active_squirrel_conversation) {
     conversation_controller_.set_speaker_position(active_squirrel_position);
+  }
+  if (conversation_controller_.active() && conversation_controller_.speaker_id() == kOwlSpeakerId) {
+    conversation_controller_.set_speaker_position(owl_encounter_.position());
   }
   if (!conversation_started && (!conversation_controller_.active() || active_squirrel_conversation)) {
     squirrel_dialogue_events_.clear();
@@ -234,6 +222,11 @@ void App::frame(Renderer& renderer, const CameraInput& input) {
   squirrel_quest_.drain_completion_events(squirrel_completion_events_);
   for (const SquirrelQuest::CompletionEvent& event : squirrel_completion_events_) {
     firefly_loop_.add_squirrel_completion_bonus(event.position);
+    if (owl_return_milestone_ == OwlReturnMilestone::Locked) {
+      owl_return_milestone_ = OwlReturnMilestone::Pending;
+      owl_return_completed_squirrel_position_ = event.squirrel_position;
+      owl_return_quiet_seconds_ = 0.0f;
+    }
   }
   if (!conversation_controller_.active() && !squirrel_completion_events_.empty()) {
     const SquirrelQuest::CompletionEvent& event = squirrel_completion_events_.front();
@@ -246,6 +239,25 @@ void App::frame(Renderer& renderer, const CameraInput& input) {
     request.shot = ConversationController::Shot::SpeakerMediumCloseUp;
     conversation_controller_.begin(camera_, request);
     conversation_started = true;
+  }
+  const bool squirrel_events_waiting =
+      !squirrel_approach_events_.empty() ||
+      !squirrel_dialogue_events_.empty() ||
+      !squirrel_completion_events_.empty();
+  if (!conversation_controller_.active() && !conversation_started) {
+    conversation_started = maybe_schedule_owl_return(fox_position,
+                                                     gameplay_input.delta_time,
+                                                     fox_moved,
+                                                     squirrel_events_waiting);
+    if (conversation_started) {
+      OwlEncounter::DialogueEvent return_dialogue = {};
+      if (owl_encounter_.consume_dialogue_event(return_dialogue)) {
+        conversation_started = begin_owl_dialogue(return_dialogue,
+                                                 fox_position,
+                                                 gameplay_changed,
+                                                 gameplay_structural_changed);
+      }
+    }
   }
   rebuild_gameplay_lights();
   const bool conversation_camera_changed = conversation_controller_.active()
@@ -411,6 +423,90 @@ void App::shutdown(Renderer& renderer) {
   initialized_ = false;
 }
 
+bool App::maybe_schedule_owl_return(Vec3 fox_position,
+                                    float dt,
+                                    bool fox_moved,
+                                    bool squirrel_events_waiting) {
+  if (owl_return_milestone_ != OwlReturnMilestone::Pending ||
+      !owl_encounter_.gone() ||
+      owl_encounter_.return_completed()) {
+    return false;
+  }
+  if (conversation_controller_.active() ||
+      squirrel_events_waiting ||
+      squirrel_quest_.active_quest_needs_acorns() ||
+      squirrel_quest_.fox_near_auto_talk_squirrel(fox_position) ||
+      subtitles_visible()) {
+    owl_return_quiet_seconds_ = 0.0f;
+    return false;
+  }
+
+  if (fox_moved) {
+    owl_return_quiet_seconds_ += std::max(0.0f, std::min(dt, 0.10f));
+  }
+  const float completed_squirrel_distance = horizontal_distance(fox_position, owl_return_completed_squirrel_position_);
+  const bool enough_distance = completed_squirrel_distance >= kOwlReturnPreferredDistance;
+  const bool fallback_ready =
+      completed_squirrel_distance >= kOwlReturnFallbackDistance &&
+      owl_return_quiet_seconds_ >= kOwlReturnFallbackQuietSeconds;
+  if (owl_return_quiet_seconds_ < kOwlReturnMinimumQuietSeconds ||
+      (!enough_distance && !fallback_ready)) {
+    return false;
+  }
+
+  const Vec3 forward_anchor = firefly_loop_.objective_position(fox_position);
+  const bool scheduled = owl_encounter_.schedule_return(generator_,
+                                                       forward_anchor,
+                                                       fox_position,
+                                                       owl_return_completed_squirrel_position_);
+  if (scheduled) {
+    owl_return_milestone_ = OwlReturnMilestone::Seen;
+  }
+  return scheduled;
+}
+
+bool App::begin_owl_dialogue(const OwlEncounter::DialogueEvent& owl_dialogue,
+                             Vec3 fox_position,
+                             bool& gameplay_changed,
+                             bool& gameplay_structural_changed) {
+  if (owl_dialogue.line == 1 && !firefly_loop_.fireflies_unlocked()) {
+    firefly_loop_.unlock_fireflies(generator_);
+    gameplay_changed = true;
+    gameplay_structural_changed = true;
+  }
+  if (owl_dialogue.line == 2) {
+    lantern_hud_revealed_ = true;
+  }
+
+  ConversationController::Request request = {};
+  request.speaker_position = owl_encounter_.position();
+  request.listener_position = fox_position;
+  request.speaker_id = kOwlSpeakerId;
+  request.text = owl_dialogue.text;
+  request.seconds = owl_dialogue.seconds;
+  request.show_subtitle = owl_dialogue.show_subtitle;
+  request.allow_confirm_skip = false;
+  if (!owl_dialogue.show_subtitle) {
+    request.shot = ConversationController::Shot::FollowSpeaker;
+  } else if (owl_dialogue.line == 1) {
+    request.shot = ConversationController::Shot::SpeakerCloseUp;
+  } else if (owl_dialogue.line == 2) {
+    request.shot = ConversationController::Shot::LookAtFocus;
+    request.focus_position = firefly_loop_.farthest_firefly_position(fox_position);
+  } else if (owl_dialogue.focus_target) {
+    request.shot = ConversationController::Shot::LookAtFocus;
+    request.focus_position = owl_dialogue.target_position;
+  } else {
+    request.shot = ConversationController::Shot::SpeakerMediumCloseUp;
+  }
+  if (conversation_controller_.active()) {
+    conversation_controller_.replace_line(camera_, request);
+  } else {
+    conversation_controller_.begin(camera_, request);
+  }
+  return true;
+}
+
 void App::rebuild_fox_mesh() {
   fox_mesh_.clear();
   append_fox_mesh(fox_mesh_,
@@ -425,6 +521,11 @@ void App::rebuild_dynamic_mesh() {
   firefly_loop_.append_dynamic_mesh(dynamic_mesh_, fox_controller_.position(), fox_controller_.heading());
   squirrel_quest_.append_dynamic_mesh(dynamic_mesh_, fox_controller_.position());
   append_owl_perch_mesh(dynamic_mesh_, owl_encounter_.perch_position(), owl_encounter_.perch_heading());
+  if (owl_encounter_.return_perch_visible()) {
+    append_owl_perch_mesh(dynamic_mesh_,
+                          owl_encounter_.return_perch_position(),
+                          owl_encounter_.return_perch_heading());
+  }
   if (owl_encounter_.gone()) {
     return;
   }
