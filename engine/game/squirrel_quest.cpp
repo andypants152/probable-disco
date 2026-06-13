@@ -31,6 +31,7 @@ constexpr float kSquirrelApproachSeconds = 2.65f;
 constexpr float kSquirrelApproachDistance = 17.5f;
 constexpr float kSquirrelIdleSoundRadius = 14.0f;
 constexpr float kSquirrelScamperSoundRadius = 30.0f;
+constexpr float kSquirrelApproachDurationJitter = 0.28f;
 constexpr int kAcornSlotsPerLitLantern = 14;
 constexpr int kMaxVisibleSquirrels = 6;
 constexpr int kMaxVisibleAcorns = 20;
@@ -57,6 +58,14 @@ std::uint32_t hash2(int x, int z, std::uint32_t seed) {
 
 float hash01(int x, int z, std::uint32_t seed) {
   return static_cast<float>(hash2(x, z, seed) & 0xffffu) / 65535.0f;
+}
+
+float hash01_from_id(std::uint32_t id, std::uint32_t seed) {
+  return static_cast<float>(hash_u32(id ^ seed) & 0xffffu) / 65535.0f;
+}
+
+float variation_from_id(std::uint32_t id, std::uint32_t seed, float minimum, float maximum) {
+  return minimum + (maximum - minimum) * hash01_from_id(id, seed);
 }
 
 int floor_to_int(float value) {
@@ -356,6 +365,51 @@ float sound_cooldown_from_seed(std::uint32_t id, float timer, std::uint32_t seed
   return minimum + (maximum - minimum) * unit;
 }
 
+std::size_t stable_line_index(std::uint32_t squirrel_id, std::uint32_t seed, std::size_t line_count) {
+  const std::uint32_t mixed = hash_u32(hash_u32(squirrel_id ^ seed) + seed * 0x9e3779b9u);
+  return static_cast<std::size_t>(mixed % static_cast<std::uint32_t>(line_count));
+}
+
+const char* request_line_for(std::uint32_t squirrel_id) {
+  constexpr std::array<const char*, 14> kLines = {{
+      "Oh! Acorns! I lost five.",
+      "Five acorns, please?",
+      "I was saving them... then forgot where.",
+      "Can you find my acorns?",
+      "The shiny ones rolled away.",
+      "My acorns escaped again.",
+      "Have you seen five acorns?",
+      "I dropped my best five.",
+      "Five went missing by moonlight.",
+      "I need my snack pile back.",
+      "The round ones got away.",
+      "Could you gather five?",
+      "My hiding place hid from me.",
+      "I counted five. Then none.",
+  }};
+  return kLines[stable_line_index(squirrel_id, 0x71556e31u, kLines.size())];
+}
+
+const char* completion_line_for(std::uint32_t squirrel_id) {
+  constexpr std::array<const char*, 14> kLines = {{
+      "That's them! Thank you!",
+      "My winter pile lives!",
+      "You found the good ones!",
+      "I knew foxes were clever.",
+      "I owe you a tiny favor.",
+      "Perfect! All five!",
+      "My paws are grateful.",
+      "These smell exactly right.",
+      "You saved snack time.",
+      "A proper pile again!",
+      "I will remember this.",
+      "The forest picked well.",
+      "Fox help is fast help.",
+      "Now I can stop worrying.",
+  }};
+  return kLines[stable_line_index(squirrel_id, 0x71556e32u, kLines.size())];
+}
+
 }  // namespace
 
 void SquirrelQuest::init(const TerrainGenerator& generator, const FireflyLoop& firefly_loop) {
@@ -414,7 +468,9 @@ SquirrelQuest::UpdateResult SquirrelQuest::update(float dt,
       const float t = smoothstep(squirrel.approach_timer / std::max(0.001f, squirrel.approach_duration));
       const float x = lerp(squirrel.approach_start.x, squirrel.home.x, t);
       const float z = lerp(squirrel.approach_start.z, squirrel.home.z, t);
-      const float hop = std::fabs(std::sin(squirrel.approach_timer * 12.5f)) * 0.34f * (1.0f - 0.22f * t);
+      const float approach_hop_speed = variation_from_id(squirrel.id, 0x61707072u, 11.4f, 13.8f);
+      const float hop = std::fabs(std::sin(squirrel.approach_timer * approach_hop_speed)) *
+          0.34f * (1.0f - 0.22f * t);
       squirrel.position = {x, interpolated_terrain_height(generator, x, z) + 1.0f + hop, z};
       squirrel.heading = squirrel.approach_timer < squirrel.approach_duration
           ? std::atan2(squirrel.home.x - squirrel.position.x, squirrel.home.z - squirrel.position.z)
@@ -430,9 +486,13 @@ SquirrelQuest::UpdateResult SquirrelQuest::update(float dt,
                                                                    0.46f);
       }
     } else {
+      const float idle_hop_speed = variation_from_id(squirrel.id, 0x686f7073u, 1.75f, 2.55f);
+      const float idle_hop_threshold = variation_from_id(squirrel.id, 0x686f7074u, 0.975f, 0.992f);
+      const float talking_hop_speed = variation_from_id(squirrel.id, 0x74616c6bu, 8.1f, 10.3f);
       const float hop = talking
-          ? (std::sin(squirrel.animation_timer * 9.0f) > 0.70f ? 1.0f : 0.0f)
-          : (std::sin(squirrel.animation_timer * 2.1f + static_cast<float>(squirrel.id & 7u)) > 0.985f
+          ? (std::sin(squirrel.animation_timer * talking_hop_speed) > 0.70f ? 1.0f : 0.0f)
+          : (std::sin(squirrel.animation_timer * idle_hop_speed + static_cast<float>(squirrel.id & 7u)) >
+              idle_hop_threshold
           ? 1.0f
           : 0.0f);
       squirrel.position = squirrel.home + Vec3{0.0f, hop * 0.08f, 0.0f};
@@ -477,10 +537,7 @@ SquirrelQuest::UpdateResult SquirrelQuest::update(float dt,
       DialogueEvent event = {};
       event.squirrel_position = squirrel.position;
       event.squirrel_id = squirrel.id;
-      std::snprintf(event.text,
-                    sizeof(event.text),
-                    "Could you help me find %d acorns?",
-                    progress.required_acorns);
+      std::snprintf(event.text, sizeof(event.text), "%s", request_line_for(squirrel.id));
       event.seconds = 2.45f;
       dialogue_events_.push_back(event);
       progress.greeted = true;
@@ -549,7 +606,7 @@ SquirrelQuest::UpdateResult SquirrelQuest::update(float dt,
           event.position = completion_position;
           event.squirrel_position = completion_position;
           event.squirrel_id = completion_squirrel_id;
-          std::snprintf(event.text, sizeof(event.text), "Thank you! The forest remembers.");
+          std::snprintf(event.text, sizeof(event.text), "%s", completion_line_for(completion_squirrel_id));
           event.seconds = 2.4f;
           completion_events_.push_back(event);
           if (audio_ready_for_gameplay_sound()) {
@@ -589,16 +646,27 @@ void SquirrelQuest::append_dynamic_mesh(Mesh& mesh, Vec3 fox_position) const {
     const bool happy = squirrel.happy_timer > 0.0f || (progress != nullptr && progress->completed);
     const bool talking = squirrel.id == talking_squirrel_id_;
     const bool approaching = squirrel.approach_timer < squirrel.approach_duration;
-    const float timer = squirrel.animation_timer + static_cast<float>(squirrel.id & 31u) * 0.17f;
+    const float phase = variation_from_id(squirrel.id, 0x70686173u, 0.0f, kTwoPi);
+    const float idle_speed = variation_from_id(squirrel.id, 0x69646c65u, 0.86f, 1.18f);
+    const float happy_speed = variation_from_id(squirrel.id, 0x68617070u, 0.90f, 1.24f);
+    const float timer = squirrel.animation_timer * (happy ? happy_speed : idle_speed) + phase;
     const float tail = approaching
-        ? std::sin(timer * 10.5f)
-        : (talking ? std::sin(timer * 11.0f) : std::sin(timer * (happy ? 8.2f : 3.4f)));
+        ? std::sin(timer * variation_from_id(squirrel.id, 0x7461696cu, 9.8f, 11.8f))
+        : (talking ? std::sin(timer * variation_from_id(squirrel.id, 0x7461696du, 10.0f, 12.4f))
+                   : std::sin(timer * (happy
+                       ? variation_from_id(squirrel.id, 0x7461696eu, 7.4f, 9.0f)
+                       : variation_from_id(squirrel.id, 0x7461696fu, 2.9f, 3.9f))));
     const float head = talking
-        ? std::sin(timer * 7.6f) * 0.85f
-        : std::sin(timer * 0.72f + 1.3f);
+        ? std::sin(timer * variation_from_id(squirrel.id, 0x68656164u, 7.0f, 8.3f)) * 0.85f
+        : std::sin(timer * variation_from_id(squirrel.id, 0x68656165u, 0.62f, 0.84f) + 1.3f);
     const float hop = approaching ? 0.0f : (talking
-        ? (std::sin(timer * 8.8f) > 0.76f ? 1.0f : 0.0f)
-        : (happy ? std::fabs(std::sin(timer * 5.4f)) : (std::sin(timer * 1.9f) > 0.982f ? 1.0f : 0.0f)));
+        ? (std::sin(timer * variation_from_id(squirrel.id, 0x74686f70u, 8.0f, 9.8f)) > 0.76f ? 1.0f : 0.0f)
+        : (happy
+            ? std::fabs(std::sin(timer * variation_from_id(squirrel.id, 0x68686f70u, 4.7f, 6.1f)))
+            : (std::sin(timer * variation_from_id(squirrel.id, 0x69686f70u, 1.65f, 2.25f)) >
+                variation_from_id(squirrel.id, 0x69686f71u, 0.976f, 0.991f)
+                ? 1.0f
+                : 0.0f)));
     append_squirrel_mesh(mesh, squirrel.position, squirrel.heading, tail, head, hop, happy);
 
     if (happy) {
@@ -766,11 +834,12 @@ bool SquirrelQuest::add_squirrel_candidate(const TerrainGenerator& generator, Ve
   squirrel.home_heading = heading;
   squirrel.animation_timer = hash01(lantern_x, lantern_z, 0x616e696du) * kTwoPi;
   squirrel.approach_timer = 0.0f;
-  squirrel.approach_duration = kSquirrelApproachSeconds;
+  squirrel.approach_duration = kSquirrelApproachSeconds +
+      (hash01_from_id(id, 0x61707064u) * 2.0f - 1.0f) * kSquirrelApproachDurationJitter;
   squirrel.prompt_cooldown = 0.0f;
   squirrel.happy_timer = 0.0f;
-  squirrel.idle_sound_cooldown = 2.8f + hash01(lantern_x, lantern_z, 0x69646c65u) * 5.0f;
-  squirrel.scamper_sound_cooldown = hash01(lantern_x, lantern_z, 0x7363616du) * 0.20f;
+  squirrel.idle_sound_cooldown = 2.3f + hash01_from_id(id, 0x69646c65u) * 6.0f;
+  squirrel.scamper_sound_cooldown = hash01_from_id(id, 0x7363616du) * 0.24f;
   squirrel.active = true;
   squirrels_.push_back(squirrel);
   progress_for(id);
