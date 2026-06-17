@@ -588,7 +588,7 @@ void App::rebuild_dynamic_mesh() {
   append_mesh(dynamic_mesh_, fox_mesh_);
   firefly_loop_.append_dynamic_mesh(dynamic_mesh_, fox_controller_.position(), fox_controller_.heading());
   squirrel_quest_.append_dynamic_mesh(dynamic_mesh_, fox_controller_.position());
-  rabbit_burrows_.append_dynamic_mesh(dynamic_mesh_, fox_controller_.position());
+  rabbit_burrows_.append_dynamic_mesh(dynamic_mesh_, fox_controller_.position(), fox_controller_.heading());
   append_owl_perch_mesh(dynamic_mesh_, owl_encounter_.perch_position(), owl_encounter_.perch_heading());
   if (owl_encounter_.return_perch_visible()) {
     append_owl_perch_mesh(dynamic_mesh_,
@@ -655,13 +655,15 @@ void App::update_lantern_hud() {
                   squirrel_quest_.active_required_acorns());
   }
   const int prompt_offset = static_cast<int>(std::strlen(text));
-  if (rabbit_burrows_.knock_prompt_visible(fox_controller_.position()) &&
+  const char* rabbit_prompt = rabbit_burrows_.interaction_prompt(fox_controller_.position());
+  if (rabbit_prompt != nullptr &&
       prompt_offset >= 0 &&
       prompt_offset < static_cast<int>(sizeof(text))) {
     std::snprintf(text + prompt_offset,
                   sizeof(text) - static_cast<std::size_t>(prompt_offset),
-                  "%sA: Knock",
-                  prompt_offset > 0 ? "\n" : "");
+                  "%s%s",
+                  prompt_offset > 0 ? "\n" : "",
+                  rabbit_prompt);
   }
   subtitles_set_hud_text(text);
 }

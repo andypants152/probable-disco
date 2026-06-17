@@ -40,6 +40,8 @@ void append_heart_mesh(Mesh& mesh, Vec3 position, float scale, float pulse);
 void append_acorn_mesh(Mesh& mesh, Vec3 position, float phase, float readability);
 void append_burrow_mesh(Mesh& mesh, Vec3 position, float heading_radians);
 void append_rabbit_mesh(Mesh& mesh, Vec3 ground_center, float heading_radians, float pop_progress);
+void append_carrot_patch_mesh(Mesh& mesh, Vec3 position, float heading_radians, int carrots_remaining);
+void append_carried_carrot_mesh(Mesh& mesh, Vec3 fox_position, float fox_heading);
 void append_lantern_mesh(Mesh& mesh,
                          Vec3 position,
                          int deposited_fireflies,

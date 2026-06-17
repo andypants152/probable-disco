@@ -18,6 +18,8 @@ constexpr float kTwoPi = 6.28318530717958647692f;
 constexpr float kBurrowDiscoverRadius = 110.0f;
 constexpr float kBurrowRenderDistance = 54.0f;
 constexpr float kBurrowInteractRadius = 2.6f;
+constexpr float kCarrotPatchRenderDistance = 46.0f;
+constexpr float kCarrotPatchInteractRadius = 2.35f;
 constexpr float kBurrowPopSeconds = 0.45f;
 constexpr float kBurrowMinSideDistance = 6.0f;
 constexpr float kBurrowMaxSideDistance = 12.0f;
@@ -25,13 +27,71 @@ constexpr float kBurrowLanternClearance = 5.2f;
 constexpr float kBurrowOwlClearance = 11.0f;
 constexpr float kBurrowSpacing = 15.0f;
 constexpr float kBurrowSquirrelClearance = 4.4f;
-constexpr int kBurrowStartLanternIndex = 2;
-constexpr int kBurrowLanternStride = 6;
+constexpr float kCarrotPatchMinDistance = 14.0f;
+constexpr float kCarrotPatchMaxDistance = 26.0f;
+constexpr float kCarrotPatchLanternClearance = 4.8f;
+constexpr float kCarrotPatchBurrowClearance = 5.0f;
+constexpr float kCarrotPatchSpacing = 10.0f;
+constexpr int kEarlyBurrowFirstLitIndex = 1;
+constexpr int kEarlyBurrowLastLitIndex = 3;
+constexpr int kLaterBurrowStartLitIndex = 5;
+constexpr int kLaterBurrowStride = 6;
 constexpr int kBurrowPlacementAttempts = 7;
+constexpr int kEarlyBurrowPlacementAttempts = 28;
+constexpr int kCarrotPatchPlacementAttempts = 18;
+constexpr int kEarlyCarrotPatchPlacementAttempts = 42;
 constexpr int kWorldDressingStep = 6;
 constexpr float kMoonClearingX = 42.0f;
 constexpr float kMoonClearingZ = -104.0f;
 constexpr float kMoonClearingRadius = 16.0f;
+
+enum class PlacementFailure {
+  None,
+  MoonClearing,
+  Owl,
+  Lantern,
+  Squirrel,
+  Ground,
+  Tree,
+  Blocked,
+  Dressing,
+  Mushroom,
+  BurrowSpacing,
+};
+
+[[maybe_unused]] const char* failure_name(PlacementFailure failure) {
+  switch (failure) {
+    case PlacementFailure::None:
+      return "none";
+    case PlacementFailure::MoonClearing:
+      return "moon_clearing";
+    case PlacementFailure::Owl:
+      return "owl";
+    case PlacementFailure::Lantern:
+      return "lantern";
+    case PlacementFailure::Squirrel:
+      return "squirrel";
+    case PlacementFailure::Ground:
+      return "ground";
+    case PlacementFailure::Tree:
+      return "tree";
+    case PlacementFailure::Blocked:
+      return "blocked";
+    case PlacementFailure::Dressing:
+      return "dressing";
+    case PlacementFailure::Mushroom:
+      return "mushroom";
+    case PlacementFailure::BurrowSpacing:
+      return "burrow_spacing";
+  }
+  return "unknown";
+}
+
+#if defined(VOXEL_DEBUG_RABBIT_PLACEMENT)
+#define RABBIT_PLACEMENT_LOG(...) std::printf(__VA_ARGS__)
+#else
+#define RABBIT_PLACEMENT_LOG(...) ((void)0)
+#endif
 
 std::uint32_t hash_u32(std::uint32_t value) {
   value ^= value >> 16;
@@ -250,30 +310,94 @@ bool can_place_burrow_at(const TerrainGenerator& generator,
                          const FireflyLoop& firefly_loop,
                          const SquirrelQuest& squirrel_quest,
                          float x,
-                         float z) {
+                         float z,
+                         bool relax_decorative,
+                         PlacementFailure& failure) {
+  failure = PlacementFailure::None;
   if (inside_moon_clearing(x, z)) {
+    failure = PlacementFailure::MoonClearing;
     return false;
   }
 
   const Vec3 position = {x, interpolated_terrain_height(generator, x, z) + 1.0f, z};
   if (horizontal_distance(position, owl_perch_position(generator)) < kBurrowOwlClearance) {
+    failure = PlacementFailure::Owl;
     return false;
   }
   if (firefly_loop.blocks_acorn_spawn(position, kBurrowLanternClearance)) {
+    failure = PlacementFailure::Lantern;
     return false;
   }
   if (squirrel_quest.blocks_landmark_spawn(position, kBurrowSquirrelClearance)) {
+    failure = PlacementFailure::Squirrel;
     return false;
   }
   if (!is_clear_ground(generator, x, z, 4) || !has_flat_footprint(generator, x, z)) {
+    failure = PlacementFailure::Ground;
     return false;
   }
   const int cell_x = static_cast<int>(std::round(x));
   const int cell_z = static_cast<int>(std::round(z));
-  if (has_nearby_tree(generator, cell_x, cell_z, 7) ||
-      has_nearby_solid_above_ground(generator, cell_x, cell_z, 2, 4) ||
-      near_major_dressing(x, z, 2.4f) ||
-      near_likely_mushroom(generator, x, z)) {
+  if (has_nearby_tree(generator, cell_x, cell_z, 7)) {
+    failure = PlacementFailure::Tree;
+    return false;
+  }
+  if (has_nearby_solid_above_ground(generator, cell_x, cell_z, 2, 4)) {
+    failure = PlacementFailure::Blocked;
+    return false;
+  }
+  if (!relax_decorative && near_major_dressing(x, z, 2.4f)) {
+    failure = PlacementFailure::Dressing;
+    return false;
+  }
+  if (!relax_decorative && near_likely_mushroom(generator, x, z)) {
+    failure = PlacementFailure::Mushroom;
+    return false;
+  }
+  return true;
+}
+
+bool can_place_carrot_patch_at(const TerrainGenerator& generator,
+                               const FireflyLoop& firefly_loop,
+                               const SquirrelQuest& squirrel_quest,
+                               float x,
+                               float z,
+                               PlacementFailure& failure) {
+  failure = PlacementFailure::None;
+  if (inside_moon_clearing(x, z)) {
+    failure = PlacementFailure::MoonClearing;
+    return false;
+  }
+
+  const Vec3 position = {x, interpolated_terrain_height(generator, x, z) + 1.0f, z};
+  if (horizontal_distance(position, owl_perch_position(generator)) < kBurrowOwlClearance) {
+    failure = PlacementFailure::Owl;
+    return false;
+  }
+  if (firefly_loop.blocks_acorn_spawn(position, kCarrotPatchLanternClearance)) {
+    failure = PlacementFailure::Lantern;
+    return false;
+  }
+  if (squirrel_quest.blocks_landmark_spawn(position, kBurrowSquirrelClearance)) {
+    failure = PlacementFailure::Squirrel;
+    return false;
+  }
+  if (!is_clear_ground(generator, x, z, 3) || !has_flat_footprint(generator, x, z)) {
+    failure = PlacementFailure::Ground;
+    return false;
+  }
+  const int cell_x = static_cast<int>(std::round(x));
+  const int cell_z = static_cast<int>(std::round(z));
+  if (has_nearby_tree(generator, cell_x, cell_z, 6)) {
+    failure = PlacementFailure::Tree;
+    return false;
+  }
+  if (has_nearby_solid_above_ground(generator, cell_x, cell_z, 2, 3)) {
+    failure = PlacementFailure::Blocked;
+    return false;
+  }
+  if (near_major_dressing(x, z, 2.8f)) {
+    failure = PlacementFailure::Dressing;
     return false;
   }
   return true;
@@ -285,9 +409,11 @@ void RabbitBurrows::init(const TerrainGenerator& generator,
                          const FireflyLoop& firefly_loop,
                          const SquirrelQuest& squirrel_quest) {
   burrows_.clear();
+  carrot_patches_.clear();
   known_burrow_ids_.clear();
   lit_lantern_positions_.clear();
   dialogue_events_.clear();
+  carried_carrots_ = 0;
   refresh_timer_ = 0.0f;
   refresh_nearby(generator, firefly_loop, squirrel_quest, {});
 }
@@ -304,20 +430,48 @@ RabbitBurrows::UpdateResult RabbitBurrows::update(float dt,
   refresh_timer_ -= dt;
   if (refresh_timer_ <= 0.0f) {
     const std::size_t burrow_count = burrows_.size();
+    const std::size_t patch_count = carrot_patches_.size();
     refresh_nearby(generator, firefly_loop, squirrel_quest, fox_position);
-    result.structural_changed = result.structural_changed || burrow_count != burrows_.size();
+    result.structural_changed = result.structural_changed ||
+        burrow_count != burrows_.size() ||
+        patch_count != carrot_patches_.size();
     refresh_timer_ = 0.90f;
   }
 
   if (interact_pressed) {
+    Burrow* give_burrow = carried_carrots_ > 0
+        ? nearest_hungry_popped_burrow(fox_position, kBurrowInteractRadius)
+        : nullptr;
+    CarrotPatch* patch = carried_carrots_ == 0
+        ? nearest_pullable_patch(fox_position, kCarrotPatchInteractRadius)
+        : nullptr;
     Burrow* burrow = nearest_knockable_burrow(fox_position, kBurrowInteractRadius);
-    if (burrow != nullptr && !burrow->popped_out) {
+    Burrow* fed_burrow = nearest_fed_burrow(fox_position, kBurrowInteractRadius);
+    if (give_burrow != nullptr) {
+      carried_carrots_ = 0;
+      give_burrow->fed = true;
+      give_burrow->popped_out = true;
+      give_burrow->pop_progress = 1.0f;
+      give_burrow->fed_thanks_played = true;
+      give_burrow->fed_second_dialogue_played = false;
+      give_burrow->fed_second_line_delay = 2.25f;
+      give_burrow->second_dialogue_played = true;
+      queue_dialogue(*give_burrow, "for me? oh thank you!", 2.25f);
+      result.structural_changed = true;
+    } else if (patch != nullptr) {
+      patch->carrots_remaining = 0;
+      carried_carrots_ = 1;
+      result.structural_changed = true;
+    } else if (burrow != nullptr && !burrow->popped_out) {
       burrow->popped_out = true;
       burrow->pop_progress = 0.0f;
       burrow->second_line_delay = 2.35f;
       queue_dialogue(*burrow, "oh! do you have any carrots?", 2.35f);
       burrow->first_dialogue_played = true;
       result.structural_changed = true;
+    } else if (fed_burrow != nullptr && allow_dialogue && fed_burrow->friendly_dialogue_cooldown <= 0.0f) {
+      queue_dialogue(*fed_burrow, "we put some soup on.", 1.9f);
+      fed_burrow->friendly_dialogue_cooldown = 3.0f;
     }
   }
 
@@ -327,13 +481,21 @@ RabbitBurrows::UpdateResult RabbitBurrows::update(float dt,
     }
     const float previous_pop = burrow.pop_progress;
     burrow.animation_timer += dt;
+    burrow.friendly_dialogue_cooldown = std::max(0.0f, burrow.friendly_dialogue_cooldown - dt);
     if (burrow.popped_out) {
       burrow.pop_progress = std::min(1.0f, burrow.pop_progress + dt / kBurrowPopSeconds);
-      if (burrow.first_dialogue_played && !burrow.second_dialogue_played) {
+      if (!burrow.fed && burrow.first_dialogue_played && !burrow.second_dialogue_played) {
         burrow.second_line_delay = std::max(0.0f, burrow.second_line_delay - dt);
         if (allow_dialogue && burrow.second_line_delay <= 0.0f) {
           queue_dialogue(burrow, "we're saving up for soup.", 2.25f);
           burrow.second_dialogue_played = true;
+        }
+      }
+      if (burrow.fed_thanks_played && !burrow.fed_second_dialogue_played) {
+        burrow.fed_second_line_delay = std::max(0.0f, burrow.fed_second_line_delay - dt);
+        if (allow_dialogue && burrow.fed_second_line_delay <= 0.0f) {
+          queue_dialogue(burrow, "soup is going to be wonderful.", 2.35f);
+          burrow.fed_second_dialogue_played = true;
         }
       }
     }
@@ -345,7 +507,7 @@ RabbitBurrows::UpdateResult RabbitBurrows::update(float dt,
   return result;
 }
 
-void RabbitBurrows::append_dynamic_mesh(Mesh& mesh, Vec3 fox_position) const {
+void RabbitBurrows::append_dynamic_mesh(Mesh& mesh, Vec3 fox_position, float fox_heading) const {
   for (const Burrow& burrow : burrows_) {
     if (!burrow.active || horizontal_distance(fox_position, burrow.position) > kBurrowRenderDistance) {
       continue;
@@ -355,10 +517,35 @@ void RabbitBurrows::append_dynamic_mesh(Mesh& mesh, Vec3 fox_position) const {
       append_rabbit_mesh(mesh, burrow.position, burrow.heading, burrow.pop_progress);
     }
   }
+
+  for (const CarrotPatch& patch : carrot_patches_) {
+    if (!patch.active || horizontal_distance(fox_position, patch.position) > kCarrotPatchRenderDistance) {
+      continue;
+    }
+    append_carrot_patch_mesh(mesh, patch.position, patch.heading, patch.carrots_remaining);
+  }
+
+  if (carried_carrots_ > 0) {
+    append_carried_carrot_mesh(mesh, fox_position, fox_heading);
+  }
 }
 
-bool RabbitBurrows::knock_prompt_visible(Vec3 fox_position) const {
-  return nearest_knockable_burrow(fox_position, kBurrowInteractRadius) != nullptr;
+const char* RabbitBurrows::interaction_prompt(Vec3 fox_position) const {
+  if (carried_carrots_ > 0 &&
+      nearest_hungry_popped_burrow(fox_position, kBurrowInteractRadius) != nullptr) {
+    return "A: Give carrot";
+  }
+  if (carried_carrots_ == 0 &&
+      nearest_pullable_patch(fox_position, kCarrotPatchInteractRadius) != nullptr) {
+    return "A: Pull carrot";
+  }
+  if (nearest_knockable_burrow(fox_position, kBurrowInteractRadius) != nullptr) {
+    return "A: Knock";
+  }
+  if (nearest_fed_burrow(fox_position, kBurrowInteractRadius) != nullptr) {
+    return "A: Chat";
+  }
+  return nullptr;
 }
 
 bool RabbitBurrows::rabbit_position(std::uint32_t rabbit_id, Vec3& position) const {
@@ -386,17 +573,31 @@ void RabbitBurrows::refresh_nearby(const TerrainGenerator& generator,
   lit_lantern_positions_.clear();
   firefly_loop.lit_lantern_positions(lit_lantern_positions_);
 
+  const bool early_burrow_needed = !has_any_burrow();
   for (std::size_t i = 0; i < lit_lantern_positions_.size(); ++i) {
     const int lantern_index = static_cast<int>(i);
-    if (lantern_index < kBurrowStartLanternIndex ||
-        (lantern_index - kBurrowStartLanternIndex) % kBurrowLanternStride != 0) {
+    const bool early_candidate = early_burrow_needed &&
+        lantern_index >= kEarlyBurrowFirstLitIndex &&
+        lantern_index <= kEarlyBurrowLastLitIndex;
+    const bool later_candidate = !early_burrow_needed &&
+        lantern_index >= kLaterBurrowStartLitIndex &&
+        (lantern_index - kLaterBurrowStartLitIndex) % kLaterBurrowStride == 0;
+    if (!early_candidate && !later_candidate) {
       continue;
     }
     const Vec3 lantern_position = lit_lantern_positions_[i];
     if (horizontal_distance(fox_position, lantern_position) > kBurrowDiscoverRadius) {
       continue;
     }
-    add_burrow_candidate(generator, firefly_loop, squirrel_quest, lit_lantern_positions_, lantern_index);
+    if (add_burrow_candidate(generator,
+                             firefly_loop,
+                             squirrel_quest,
+                             lit_lantern_positions_,
+                             lantern_index,
+                             early_candidate) &&
+        early_candidate) {
+      break;
+    }
   }
 }
 
@@ -404,7 +605,8 @@ bool RabbitBurrows::add_burrow_candidate(const TerrainGenerator& generator,
                                          const FireflyLoop& firefly_loop,
                                          const SquirrelQuest& squirrel_quest,
                                          const std::vector<Vec3>& lantern_positions,
-                                         int lantern_index) {
+                                         int lantern_index,
+                                         bool early_candidate) {
   const Vec3 lantern_position = lantern_positions[static_cast<std::size_t>(lantern_index)];
   const int lantern_x = static_cast<int>(std::round(lantern_position.x));
   const int lantern_z = static_cast<int>(std::round(lantern_position.z));
@@ -413,7 +615,10 @@ bool RabbitBurrows::add_burrow_candidate(const TerrainGenerator& generator,
   if (known_burrow_ids_.find(id) != known_burrow_ids_.end()) {
     return false;
   }
-  known_burrow_ids_.insert(id);
+  RABBIT_PLACEMENT_LOG("rabbit placement consider lantern %d id %08x mode %s\n",
+                       lantern_index,
+                       id,
+                       early_candidate ? "early" : "normal");
 
   const Vec3 previous = lantern_index > 0
       ? lantern_positions[static_cast<std::size_t>(lantern_index - 1)]
@@ -427,15 +632,40 @@ bool RabbitBurrows::add_burrow_candidate(const TerrainGenerator& generator,
     side = side * -1.0f;
   }
 
-  for (int attempt = 0; attempt < kBurrowPlacementAttempts; ++attempt) {
-    const float side_distance = kBurrowMinSideDistance +
-        hash01(lantern_x + attempt * 17, lantern_z - attempt * 23, 0x72616263u) *
-            (kBurrowMaxSideDistance - kBurrowMinSideDistance);
-    const float along = (hash01(lantern_x - attempt * 29, lantern_z + attempt * 13, 0x72616264u) - 0.5f) * 5.0f;
-    const float side_jitter =
-        (hash01(lantern_x + attempt * 41, lantern_z - attempt * 37, 0x72616265u) - 0.5f) * 2.0f;
-    const float x = lantern_position.x + side.x * (side_distance + side_jitter) + tangent.x * along;
-    const float z = lantern_position.z + side.z * (side_distance + side_jitter) + tangent.z * along;
+  [[maybe_unused]] PlacementFailure last_failure = PlacementFailure::None;
+  const int attempt_count = early_candidate ? kEarlyBurrowPlacementAttempts : kBurrowPlacementAttempts;
+  for (int attempt = 0; attempt < attempt_count; ++attempt) {
+    Vec3 attempt_side = side;
+    float side_distance = 0.0f;
+    float along = 0.0f;
+    float side_jitter = 0.0f;
+    bool relax_decorative = false;
+
+    if (early_candidate) {
+      const int side_index = attempt % 2;
+      const int distance_index = (attempt / 2) % 4;
+      const int along_index = (attempt / 8) % 4;
+      if (side_index == 1) {
+        attempt_side = attempt_side * -1.0f;
+      }
+
+      constexpr float kEarlyDistances[4] = {8.2f, 6.1f, 10.8f, 12.8f};
+      constexpr float kEarlyAlong[4] = {0.0f, -2.8f, 2.8f, -5.0f};
+      side_distance = kEarlyDistances[distance_index];
+      along = kEarlyAlong[along_index];
+      side_jitter = (hash01(lantern_x + attempt * 17, lantern_z - attempt * 19, 0x72616266u) - 0.5f) * 0.9f;
+      relax_decorative = attempt >= 12;
+    } else {
+      side_distance = kBurrowMinSideDistance +
+          hash01(lantern_x + attempt * 17, lantern_z - attempt * 23, 0x72616263u) *
+              (kBurrowMaxSideDistance - kBurrowMinSideDistance);
+      along = (hash01(lantern_x - attempt * 29, lantern_z + attempt * 13, 0x72616264u) - 0.5f) * 5.0f;
+      side_jitter =
+          (hash01(lantern_x + attempt * 41, lantern_z - attempt * 37, 0x72616265u) - 0.5f) * 2.0f;
+    }
+
+    const float x = lantern_position.x + attempt_side.x * (side_distance + side_jitter) + tangent.x * along;
+    const float z = lantern_position.z + attempt_side.z * (side_distance + side_jitter) + tangent.z * along;
     bool near_existing_burrow = false;
     const Vec3 candidate_position = {x, interpolated_terrain_height(generator, x, z) + 1.0f, z};
     for (const Burrow& burrow : burrows_) {
@@ -444,7 +674,19 @@ bool RabbitBurrows::add_burrow_candidate(const TerrainGenerator& generator,
         break;
       }
     }
-    if (near_existing_burrow || !can_place_burrow_at(generator, firefly_loop, squirrel_quest, x, z)) {
+    if (near_existing_burrow) {
+      last_failure = PlacementFailure::BurrowSpacing;
+      continue;
+    }
+    PlacementFailure failure = PlacementFailure::None;
+    if (!can_place_burrow_at(generator,
+                             firefly_loop,
+                             squirrel_quest,
+                             x,
+                             z,
+                             relax_decorative,
+                             failure)) {
+      last_failure = failure;
       continue;
     }
 
@@ -456,18 +698,198 @@ bool RabbitBurrows::add_burrow_candidate(const TerrainGenerator& generator,
     burrow.lantern_index = lantern_index;
     burrow.animation_timer = hash01_from_id(id, 0x616e696du) * kTwoPi;
     burrow.active = true;
+    burrow.carrot_patch_id = place_carrot_patch_for_burrow(generator,
+                                                           firefly_loop,
+                                                           squirrel_quest,
+                                                           burrow,
+                                                           lantern_position,
+                                                           early_candidate);
+    if (early_candidate && burrow.carrot_patch_id == 0) {
+      last_failure = PlacementFailure::Blocked;
+      continue;
+    }
     burrows_.push_back(burrow);
+    known_burrow_ids_.insert(id);
+    RABBIT_PLACEMENT_LOG("rabbit placement success lantern %d id %08x attempt %d x %.2f z %.2f\n",
+                         lantern_index,
+                         id,
+                         attempt,
+                         x,
+                         z);
     return true;
   }
 
+  RABBIT_PLACEMENT_LOG("rabbit placement failed lantern %d id %08x attempts %d last_failure %s\n",
+                       lantern_index,
+                       id,
+                       attempt_count,
+                       failure_name(last_failure));
   return false;
+}
+
+std::uint32_t RabbitBurrows::place_carrot_patch_for_burrow(const TerrainGenerator& generator,
+                                                           const FireflyLoop& firefly_loop,
+                                                           const SquirrelQuest& squirrel_quest,
+                                                           const Burrow& burrow,
+                                                           Vec3 lantern_position,
+                                                           bool early_candidate) {
+  const int burrow_x = static_cast<int>(std::round(burrow.position.x));
+  const int burrow_z = static_cast<int>(std::round(burrow.position.z));
+  const std::uint32_t id = hash2(burrow_x + static_cast<int>(burrow.id & 0xffu),
+                                 burrow_z - static_cast<int>((burrow.id >> 8) & 0xffu),
+                                 0xc477071du) | 0x40000000u;
+  for (const CarrotPatch& patch : carrot_patches_) {
+    if (patch.id == id) {
+      return patch.id;
+    }
+  }
+
+  const Vec3 away_from_route = horizontal_direction(lantern_position, burrow.position, {1.0f, 0.0f, 0.0f});
+  const int attempt_count = early_candidate ? kEarlyCarrotPatchPlacementAttempts : kCarrotPatchPlacementAttempts;
+  [[maybe_unused]] PlacementFailure last_failure = PlacementFailure::None;
+  for (int attempt = 0; attempt < attempt_count; ++attempt) {
+    const int angle_slot = attempt % 7;
+    const int radius_slot = (attempt / 7) % 4;
+    constexpr float kAngleOffsets[7] = {0.0f, 0.72f, -0.72f, 1.28f, -1.28f, 2.05f, -2.05f};
+    constexpr float kDistances[4] = {17.0f, 22.5f, 14.5f, 25.5f};
+    const float base_angle = std::atan2(away_from_route.x, away_from_route.z);
+    const float angle_jitter =
+        (hash01(burrow_x + attempt * 31, burrow_z - attempt * 17, 0xc477071du) - 0.5f) * 0.22f;
+    const float distance_jitter =
+        (hash01(burrow_x - attempt * 19, burrow_z + attempt * 23, 0xc477071eu) - 0.5f) * 1.6f;
+    const float distance = std::max(kCarrotPatchMinDistance,
+                                    std::min(kCarrotPatchMaxDistance,
+                                             kDistances[radius_slot] + distance_jitter));
+    const float angle = base_angle + kAngleOffsets[angle_slot] + angle_jitter;
+    const float x = burrow.position.x + std::sin(angle) * distance;
+    const float z = burrow.position.z + std::cos(angle) * distance;
+    const Vec3 candidate_position = {x, interpolated_terrain_height(generator, x, z) + 1.0f, z};
+
+    bool blocked_by_existing = false;
+    for (const Burrow& other : burrows_) {
+      if (horizontal_distance(candidate_position, other.position) < kCarrotPatchBurrowClearance) {
+        blocked_by_existing = true;
+        break;
+      }
+    }
+    if (!blocked_by_existing) {
+      for (const CarrotPatch& patch : carrot_patches_) {
+        if (horizontal_distance(candidate_position, patch.position) < kCarrotPatchSpacing) {
+          blocked_by_existing = true;
+          break;
+        }
+      }
+    }
+    if (blocked_by_existing) {
+      last_failure = PlacementFailure::BurrowSpacing;
+      continue;
+    }
+
+    PlacementFailure failure = PlacementFailure::None;
+    if (!can_place_carrot_patch_at(generator, firefly_loop, squirrel_quest, x, z, failure)) {
+      last_failure = failure;
+      continue;
+    }
+
+    CarrotPatch patch = {};
+    patch.id = id;
+    patch.burrow_id = burrow.id;
+    patch.position = candidate_position;
+    patch.heading = std::atan2(burrow.position.x - patch.position.x,
+                               burrow.position.z - patch.position.z);
+    patch.carrots_remaining = 1;
+    patch.active = true;
+    carrot_patches_.push_back(patch);
+    RABBIT_PLACEMENT_LOG("carrot patch success burrow %08x id %08x attempt %d x %.2f z %.2f\n",
+                         burrow.id,
+                         id,
+                         attempt,
+                         x,
+                         z);
+    return id;
+  }
+
+  RABBIT_PLACEMENT_LOG("carrot patch failed burrow %08x id %08x attempts %d last_failure %s\n",
+                       burrow.id,
+                       id,
+                       attempt_count,
+                       failure_name(last_failure));
+  return 0;
+}
+
+bool RabbitBurrows::has_any_burrow() const {
+  return !burrows_.empty();
+}
+
+RabbitBurrows::Burrow* RabbitBurrows::nearest_hungry_popped_burrow(Vec3 fox_position, float max_distance) {
+  Burrow* nearest = nullptr;
+  float nearest_distance = max_distance;
+  for (Burrow& burrow : burrows_) {
+    if (!burrow.active || !burrow.popped_out || burrow.fed) {
+      continue;
+    }
+    const float distance = horizontal_distance(fox_position, burrow.position);
+    if (distance <= nearest_distance) {
+      nearest_distance = distance;
+      nearest = &burrow;
+    }
+  }
+  return nearest;
+}
+
+const RabbitBurrows::Burrow* RabbitBurrows::nearest_hungry_popped_burrow(Vec3 fox_position, float max_distance) const {
+  const Burrow* nearest = nullptr;
+  float nearest_distance = max_distance;
+  for (const Burrow& burrow : burrows_) {
+    if (!burrow.active || !burrow.popped_out || burrow.fed) {
+      continue;
+    }
+    const float distance = horizontal_distance(fox_position, burrow.position);
+    if (distance <= nearest_distance) {
+      nearest_distance = distance;
+      nearest = &burrow;
+    }
+  }
+  return nearest;
+}
+
+RabbitBurrows::Burrow* RabbitBurrows::nearest_fed_burrow(Vec3 fox_position, float max_distance) {
+  Burrow* nearest = nullptr;
+  float nearest_distance = max_distance;
+  for (Burrow& burrow : burrows_) {
+    if (!burrow.active || !burrow.fed) {
+      continue;
+    }
+    const float distance = horizontal_distance(fox_position, burrow.position);
+    if (distance <= nearest_distance) {
+      nearest_distance = distance;
+      nearest = &burrow;
+    }
+  }
+  return nearest;
+}
+
+const RabbitBurrows::Burrow* RabbitBurrows::nearest_fed_burrow(Vec3 fox_position, float max_distance) const {
+  const Burrow* nearest = nullptr;
+  float nearest_distance = max_distance;
+  for (const Burrow& burrow : burrows_) {
+    if (!burrow.active || !burrow.fed) {
+      continue;
+    }
+    const float distance = horizontal_distance(fox_position, burrow.position);
+    if (distance <= nearest_distance) {
+      nearest_distance = distance;
+      nearest = &burrow;
+    }
+  }
+  return nearest;
 }
 
 RabbitBurrows::Burrow* RabbitBurrows::nearest_knockable_burrow(Vec3 fox_position, float max_distance) {
   Burrow* nearest = nullptr;
   float nearest_distance = max_distance;
   for (Burrow& burrow : burrows_) {
-    if (!burrow.active || burrow.popped_out) {
+    if (!burrow.active || burrow.popped_out || burrow.fed) {
       continue;
     }
     const float distance = horizontal_distance(fox_position, burrow.position);
@@ -483,13 +905,45 @@ const RabbitBurrows::Burrow* RabbitBurrows::nearest_knockable_burrow(Vec3 fox_po
   const Burrow* nearest = nullptr;
   float nearest_distance = max_distance;
   for (const Burrow& burrow : burrows_) {
-    if (!burrow.active || burrow.popped_out) {
+    if (!burrow.active || burrow.popped_out || burrow.fed) {
       continue;
     }
     const float distance = horizontal_distance(fox_position, burrow.position);
     if (distance <= nearest_distance) {
       nearest_distance = distance;
       nearest = &burrow;
+    }
+  }
+  return nearest;
+}
+
+RabbitBurrows::CarrotPatch* RabbitBurrows::nearest_pullable_patch(Vec3 fox_position, float max_distance) {
+  CarrotPatch* nearest = nullptr;
+  float nearest_distance = max_distance;
+  for (CarrotPatch& patch : carrot_patches_) {
+    if (!patch.active || patch.carrots_remaining <= 0) {
+      continue;
+    }
+    const float distance = horizontal_distance(fox_position, patch.position);
+    if (distance <= nearest_distance) {
+      nearest_distance = distance;
+      nearest = &patch;
+    }
+  }
+  return nearest;
+}
+
+const RabbitBurrows::CarrotPatch* RabbitBurrows::nearest_pullable_patch(Vec3 fox_position, float max_distance) const {
+  const CarrotPatch* nearest = nullptr;
+  float nearest_distance = max_distance;
+  for (const CarrotPatch& patch : carrot_patches_) {
+    if (!patch.active || patch.carrots_remaining <= 0) {
+      continue;
+    }
+    const float distance = horizontal_distance(fox_position, patch.position);
+    if (distance <= nearest_distance) {
+      nearest_distance = distance;
+      nearest = &patch;
     }
   }
   return nearest;

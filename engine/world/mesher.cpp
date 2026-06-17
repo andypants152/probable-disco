@@ -1611,6 +1611,90 @@ void append_rabbit_mesh(Mesh& mesh, Vec3 ground_center, float heading_radians, f
                    cream);
 }
 
+void append_carrot_patch_mesh(Mesh& mesh, Vec3 position, float heading_radians, int carrots_remaining) {
+  const PackedColor dirt = pack_rgba(98, 68, 44);
+  const PackedColor dirt_light = pack_rgba(126, 91, 56);
+  const PackedColor leaf = pack_rgba(51, 130, 61);
+  const PackedColor leaf_dark = pack_rgba(37, 92, 51);
+  const PackedColor carrot = pack_rgba(226, 110, 34);
+  const PackedColor carrot_shadow = pack_rgba(172, 73, 28);
+
+  append_local_box(mesh, position, heading_radians,
+                   {-0.92f, -0.01f, -0.72f},
+                   {0.92f, 0.08f, 0.72f},
+                   dirt);
+  append_local_box(mesh, position, heading_radians,
+                   {-0.70f, 0.05f, -0.48f},
+                   {0.70f, 0.13f, 0.48f},
+                   dirt_light);
+  append_local_box(mesh, position, heading_radians,
+                   {-0.26f, 0.09f, -0.66f},
+                   {0.34f, 0.15f, -0.46f},
+                   dirt);
+
+  if (carrots_remaining <= 0) {
+    append_local_box(mesh, position, heading_radians,
+                     {-0.18f, 0.11f, 0.22f},
+                     {0.28f, 0.16f, 0.42f},
+                     dirt);
+    return;
+  }
+
+  constexpr float kRoots[5][2] = {
+      {-0.46f, -0.24f},
+      {-0.10f, 0.18f},
+      {0.34f, -0.08f},
+      {0.52f, 0.34f},
+      {-0.38f, 0.42f},
+  };
+  for (int i = 0; i < 5; ++i) {
+    const float x = kRoots[i][0];
+    const float z = kRoots[i][1];
+    const bool visible_root = i < 3;
+    if (visible_root) {
+      append_local_box(mesh, position, heading_radians,
+                       {x - 0.07f, 0.08f, z - 0.06f},
+                       {x + 0.07f, 0.26f, z + 0.06f},
+                       i == 1 ? carrot_shadow : carrot);
+    }
+    append_local_box(mesh, position, heading_radians,
+                     {x - 0.06f, 0.20f, z - 0.04f},
+                     {x + 0.06f, 0.58f, z + 0.04f},
+                     i % 2 == 0 ? leaf : leaf_dark);
+    append_local_box(mesh, position, heading_radians,
+                     {x - 0.20f, 0.34f, z - 0.035f},
+                     {x + 0.20f, 0.48f, z + 0.035f},
+                     i % 2 == 0 ? leaf_dark : leaf);
+    append_local_box(mesh, position, heading_radians,
+                     {x - 0.035f, 0.34f, z - 0.18f},
+                     {x + 0.035f, 0.48f, z + 0.18f},
+                     leaf);
+  }
+}
+
+void append_carried_carrot_mesh(Mesh& mesh, Vec3 fox_position, float fox_heading) {
+  const PackedColor carrot = pack_rgba(226, 110, 34);
+  const PackedColor carrot_shadow = pack_rgba(172, 73, 28);
+  const PackedColor leaf = pack_rgba(51, 130, 61);
+  const Vec3 origin = fox_position + Vec3{0.0f, 1.28f, 0.0f};
+  append_local_box(mesh, origin, fox_heading,
+                   {-0.08f, -0.06f, 0.58f},
+                   {0.08f, 0.10f, 0.96f},
+                   carrot);
+  append_local_box(mesh, origin, fox_heading,
+                   {-0.055f, -0.10f, 0.90f},
+                   {0.055f, 0.04f, 1.08f},
+                   carrot_shadow);
+  append_local_box(mesh, origin, fox_heading,
+                   {-0.05f, 0.06f, 0.48f},
+                   {0.05f, 0.28f, 0.60f},
+                   leaf);
+  append_local_box(mesh, origin, fox_heading,
+                   {-0.17f, 0.18f, 0.51f},
+                   {0.17f, 0.28f, 0.57f},
+                   leaf);
+}
+
 void append_lantern_mesh(Mesh& mesh,
                          Vec3 position,
                          int deposited_fireflies,
