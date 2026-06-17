@@ -54,7 +54,6 @@ Web controls:
 - Gamepad left stick or D-pad: move the fox
 - Gamepad right stick: orbit the third-person camera
 - Gamepad face button: interact/confirm
-- Gamepad dev controls: tap `L1`/`R1` to lower/raise the gameplay light cap, `L2` to collect the active lantern's fireflies, `R2` to force-deposit and advance the lantern
 - On phones and tablets, touch controls appear automatically: left stick moves, right stick looks/turns, and `A` interacts
 
 ## Switch Build
@@ -81,7 +80,6 @@ Switch controls:
 - Right stick: orbit the third-person camera
 - `A`: interact/confirm
 - `+`: exit
-- Dev controls: tap `L`/`R` to lower/raise the gameplay light cap, `ZL` to collect the active lantern's fireflies, `ZR` to force-deposit and advance the lantern
 
 To build with debug/profile compiler flags:
 

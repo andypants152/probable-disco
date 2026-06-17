@@ -1482,6 +1482,135 @@ void append_acorn_mesh(Mesh& mesh, Vec3 position, float phase, float readability
                     stem});
 }
 
+void append_burrow_mesh(Mesh& mesh, Vec3 position, float heading_radians) {
+  const PackedColor dirt = pack_rgba(112, 78, 50);
+  const PackedColor dirt_light = pack_rgba(142, 100, 62);
+  const PackedColor dark = pack_rgba(24, 21, 18);
+  const PackedColor grass = pack_rgba(54, 112, 59);
+  const PackedColor grass_dark = pack_rgba(42, 90, 55);
+  const PackedColor stone = pack_rgba(91, 102, 92);
+
+  append_local_box(mesh, position, heading_radians,
+                   {-1.02f, -0.02f, -0.62f},
+                   {1.02f, 0.18f, 0.76f},
+                   dirt);
+  append_local_box(mesh, position, heading_radians,
+                   {-0.76f, 0.12f, -0.46f},
+                   {0.76f, 0.36f, 0.54f},
+                   dirt_light);
+  append_local_box(mesh, position, heading_radians,
+                   {-0.48f, 0.28f, -0.28f},
+                   {0.48f, 0.48f, 0.32f},
+                   dirt);
+
+  append_local_box(mesh, position, heading_radians,
+                   {-0.46f, 0.05f, 0.40f},
+                   {0.46f, 0.42f, 0.58f},
+                   dark);
+  append_local_box(mesh, position, heading_radians,
+                   {-0.32f, -0.03f, 0.18f},
+                   {0.32f, 0.20f, 0.64f},
+                   dark);
+  append_local_box(mesh, position, heading_radians,
+                   {-0.62f, 0.04f, 0.50f},
+                   {-0.42f, 0.34f, 0.68f},
+                   dirt);
+  append_local_box(mesh, position, heading_radians,
+                   {0.42f, 0.04f, 0.50f},
+                   {0.62f, 0.34f, 0.68f},
+                   dirt);
+
+  append_local_box(mesh, position, heading_radians,
+                   {-1.18f, 0.00f, -0.54f},
+                   {-0.98f, 0.48f, -0.42f},
+                   grass);
+  append_local_box(mesh, position, heading_radians,
+                   {-1.00f, 0.00f, -0.70f},
+                   {-0.84f, 0.36f, -0.58f},
+                   grass_dark);
+  append_local_box(mesh, position, heading_radians,
+                   {0.86f, 0.00f, -0.54f},
+                   {1.02f, 0.42f, -0.42f},
+                   grass);
+  append_local_box(mesh, position, heading_radians,
+                   {1.04f, 0.00f, -0.34f},
+                   {1.20f, 0.34f, -0.22f},
+                   grass_dark);
+  append_local_box(mesh, position, heading_radians,
+                   {-0.92f, 0.00f, 0.78f},
+                   {-0.66f, 0.16f, 1.04f},
+                   stone);
+  append_local_box(mesh, position, heading_radians,
+                   {0.66f, 0.00f, 0.74f},
+                   {0.88f, 0.13f, 0.96f},
+                   stone);
+}
+
+void append_rabbit_mesh(Mesh& mesh, Vec3 ground_center, float heading_radians, float pop_progress) {
+  const float t = smoothstep(pop_progress);
+  if (t <= 0.001f) {
+    return;
+  }
+  const float bounce = std::sin(t * 6.28318530718f) * 0.08f * (1.0f - t);
+  const float y = -0.62f + 0.62f * t + bounce;
+  const PackedColor fur = pack_rgba(214, 214, 202);
+  const PackedColor fur_shadow = pack_rgba(176, 181, 174);
+  const PackedColor cream = pack_rgba(234, 229, 211);
+  const PackedColor pink = pack_rgba(220, 150, 155);
+  const PackedColor black = pack_rgba(20, 18, 17);
+
+  append_local_box(mesh, ground_center, heading_radians,
+                   {-0.34f, y + 0.08f, -0.28f},
+                   {0.34f, y + 0.62f, 0.28f},
+                   fur);
+  append_local_box(mesh, ground_center, heading_radians,
+                   {-0.22f, y + 0.14f, 0.20f},
+                   {0.22f, y + 0.52f, 0.36f},
+                   cream);
+  append_local_box(mesh, ground_center, heading_radians,
+                   {-0.28f, y + 0.54f, 0.02f},
+                   {0.28f, y + 0.98f, 0.46f},
+                   fur);
+  append_local_box(mesh, ground_center, heading_radians,
+                   {-0.14f, y + 0.63f, 0.38f},
+                   {0.14f, y + 0.84f, 0.58f},
+                   cream);
+
+  append_local_box(mesh, ground_center, heading_radians,
+                   {-0.22f, y + 0.92f, 0.10f},
+                   {-0.06f, y + 1.42f, 0.30f},
+                   fur_shadow);
+  append_local_box(mesh, ground_center, heading_radians,
+                   {0.06f, y + 0.92f, 0.10f},
+                   {0.22f, y + 1.42f, 0.30f},
+                   fur_shadow);
+  append_local_box(mesh, ground_center, heading_radians,
+                   {-0.17f, y + 1.00f, 0.14f},
+                   {-0.10f, y + 1.34f, 0.25f},
+                   pink);
+  append_local_box(mesh, ground_center, heading_radians,
+                   {0.10f, y + 1.00f, 0.14f},
+                   {0.17f, y + 1.34f, 0.25f},
+                   pink);
+
+  append_local_box(mesh, ground_center, heading_radians,
+                   {-0.21f, y + 0.76f, 0.38f},
+                   {-0.10f, y + 0.88f, 0.50f},
+                   black);
+  append_local_box(mesh, ground_center, heading_radians,
+                   {0.10f, y + 0.76f, 0.38f},
+                   {0.21f, y + 0.88f, 0.50f},
+                   black);
+  append_local_box(mesh, ground_center, heading_radians,
+                   {-0.10f, y + 0.68f, 0.50f},
+                   {0.10f, y + 0.80f, 0.62f},
+                   fur_shadow);
+  append_local_box(mesh, ground_center, heading_radians,
+                   {-0.16f, y + 0.00f, -0.42f},
+                   {0.16f, y + 0.28f, -0.24f},
+                   cream);
+}
+
 void append_lantern_mesh(Mesh& mesh,
                          Vec3 position,
                          int deposited_fireflies,

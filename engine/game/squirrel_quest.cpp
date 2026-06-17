@@ -759,6 +759,29 @@ bool SquirrelQuest::squirrel_position(std::uint32_t squirrel_id, Vec3& position)
   return false;
 }
 
+bool SquirrelQuest::blocks_landmark_spawn(Vec3 position, float radius) const {
+  for (const Squirrel& squirrel : squirrels_) {
+    if (!squirrel.active) {
+      continue;
+    }
+    if (horizontal_distance(position, squirrel.home) <= radius ||
+        horizontal_distance(position, squirrel.position) <= radius) {
+      return true;
+    }
+  }
+
+  for (const Acorn& acorn : acorns_) {
+    if (!acorn.active || collected_acorn_ids_.find(acorn.id) != collected_acorn_ids_.end()) {
+      continue;
+    }
+    if (horizontal_distance(position, acorn.position) <= radius) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 bool SquirrelQuest::fox_near_auto_talk_squirrel(Vec3 fox_position) const {
   return nearest_squirrel(fox_position, kSquirrelAutoTalkRadius) != nullptr;
 }

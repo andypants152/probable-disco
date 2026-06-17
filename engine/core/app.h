@@ -10,6 +10,7 @@
 #include "game/firefly_loop.h"
 #include "game/fox_controller.h"
 #include "game/owl_encounter.h"
+#include "game/rabbit_burrows.h"
 #include "game/squirrel_quest.h"
 #include "platform.h"
 #include "render/mesh.h"
@@ -105,9 +106,11 @@ class App {
   FireflyLoop firefly_loop_;
   OwlEncounter owl_encounter_;
   SquirrelQuest squirrel_quest_;
+  RabbitBurrows rabbit_burrows_;
   std::vector<SquirrelQuest::ApproachEvent> squirrel_approach_events_;
   std::vector<SquirrelQuest::DialogueEvent> squirrel_dialogue_events_;
   std::vector<SquirrelQuest::CompletionEvent> squirrel_completion_events_;
+  std::vector<RabbitBurrows::DialogueEvent> rabbit_dialogue_events_;
   std::array<GameplayLight, kMaxGameplayLights> gameplay_lights_ = {};
   int gameplay_light_count_ = 0;
   int gameplay_light_limit_ = kMaxRendererGameplayLights;

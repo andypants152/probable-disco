@@ -88,25 +88,6 @@ double ns_to_ms(u64 ns) {
 }
 #endif
 
-void handle_dev_buttons(voxel::App& app, u64 down) {
-  if ((down & HidNpadButton_L) != 0) {
-    app.set_gameplay_light_limit(app.gameplay_light_limit() - 1);
-    std::printf("dev light limit %d\n", app.gameplay_light_limit());
-  }
-  if ((down & HidNpadButton_R) != 0) {
-    app.set_gameplay_light_limit(app.gameplay_light_limit() + 1);
-    std::printf("dev light limit %d\n", app.gameplay_light_limit());
-  }
-  if ((down & HidNpadButton_ZL) != 0) {
-    app.dev_collect_active_fireflies();
-    std::printf("dev collected active fireflies\n");
-  }
-  if ((down & HidNpadButton_ZR) != 0) {
-    app.dev_deposit_carried_fireflies();
-    std::printf("dev deposited carried fireflies\n");
-  }
-}
-
 }  // namespace
 
 int main(int, char**) {
@@ -137,7 +118,6 @@ int main(int, char**) {
     if ((down & HidNpadButton_Plus) != 0) {
       break;
     }
-    handle_dev_buttons(app, down);
     voxel::CameraInput input;
     update_input(input, pad, delta_time);
     input.interact = (down & HidNpadButton_A) != 0;

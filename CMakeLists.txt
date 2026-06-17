@@ -26,6 +26,7 @@ add_library(probable_disco_core STATIC
   engine/game/fox.cpp
   engine/game/fox_controller.cpp
   engine/game/owl_encounter.cpp
+  engine/game/rabbit_burrows.cpp
   engine/game/squirrel_quest.cpp
 )
 

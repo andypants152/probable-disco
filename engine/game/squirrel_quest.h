@@ -64,6 +64,7 @@ class SquirrelQuest {
   int completed_squirrels() const;
   int carried_acorns() const { return carried_acorns_; }
   bool has_active_quest() const { return active_squirrel_id_ != 0; }
+  bool blocks_landmark_spawn(Vec3 position, float radius) const;
   bool squirrel_position(std::uint32_t squirrel_id, Vec3& position) const;
   bool fox_near_auto_talk_squirrel(Vec3 fox_position) const;
   void drain_approach_events(std::vector<ApproachEvent>& events);

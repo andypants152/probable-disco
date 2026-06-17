@@ -4,6 +4,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 
 #include "audio.h"
 #include "forest_audio.h"
@@ -100,6 +101,7 @@ bool App::init(Renderer& renderer) {
   owl_encounter_.init(generator_);
   firefly_loop_.init(generator_);
   squirrel_quest_.init(generator_, firefly_loop_);
+  rabbit_burrows_.init(generator_, firefly_loop_, squirrel_quest_);
   lantern_hud_revealed_ = false;
   squirrel_hud_revealed_ = false;
   highest_owl_flyby_lantern_count_ = 0;
@@ -166,6 +168,8 @@ void App::frame(Renderer& renderer, const CameraInput& input) {
     gameplay_input.look_delta_x = 0.0f;
     gameplay_input.look_delta_y = 0.0f;
   }
+  const bool gameplay_confirm_pressed =
+      gameplay_input.action_pressed || (gameplay_input.interact && !previous_interact_down_);
 
   const bool fox_moved = fox_controller_.update(gameplay_input, generator_, camera_);
   const bool fox_animation_changed = fox_controller_.animation_changed();
@@ -192,6 +196,14 @@ void App::frame(Renderer& renderer, const CameraInput& input) {
       fox_position,
       !conversation_controller_.active() && !conversation_started);
   bool squirrel_animation_changed = squirrel_update.animation_changed;
+  const RabbitBurrows::UpdateResult rabbit_update = rabbit_burrows_.update(
+      gameplay_input.delta_time,
+      generator_,
+      firefly_loop_,
+      squirrel_quest_,
+      fox_position,
+      gameplay_confirm_pressed,
+      !conversation_controller_.active() && !conversation_started);
   update_owl_flyby_milestone(firefly_loop_.active_lantern_index());
   OwlEncounter::DialogueEvent owl_dialogue = {};
   if (owl_encounter_.consume_dialogue_event(owl_dialogue)) {
@@ -224,6 +236,13 @@ void App::frame(Renderer& renderer, const CameraInput& input) {
   if (active_squirrel_conversation) {
     conversation_controller_.set_speaker_position(active_squirrel_position);
   }
+  Vec3 active_rabbit_position = {};
+  const bool active_rabbit_conversation =
+      conversation_controller_.active() &&
+      rabbit_burrows_.rabbit_position(conversation_controller_.speaker_id(), active_rabbit_position);
+  if (active_rabbit_conversation) {
+    conversation_controller_.set_speaker_position(active_rabbit_position);
+  }
   if (conversation_controller_.active() && conversation_controller_.speaker_id() == kOwlSpeakerId) {
     conversation_controller_.set_speaker_position(owl_encounter_.position());
   }
@@ -249,6 +268,22 @@ void App::frame(Renderer& renderer, const CameraInput& input) {
       }
       conversation_started = true;
       break;
+    }
+  }
+  if (!conversation_started && !conversation_controller_.active()) {
+    rabbit_dialogue_events_.clear();
+    rabbit_burrows_.drain_dialogue_events(rabbit_dialogue_events_);
+    if (!rabbit_dialogue_events_.empty()) {
+      const RabbitBurrows::DialogueEvent& event = rabbit_dialogue_events_.front();
+      ConversationController::Request request = {};
+      request.speaker_position = event.rabbit_position;
+      request.listener_position = fox_position;
+      request.speaker_id = event.rabbit_id;
+      request.text = event.text;
+      request.seconds = event.seconds;
+      request.shot = ConversationController::Shot::SpeakerCloseUp;
+      conversation_controller_.begin(camera_, request);
+      conversation_started = true;
     }
   }
   squirrel_completion_events_.clear();
@@ -356,12 +391,15 @@ void App::frame(Renderer& renderer, const CameraInput& input) {
       gameplay_changed && gameplay_animation_upload_timer_ <= 0.0f;
   const bool gameplay_mesh_changed =
       gameplay_structural_changed || gameplay_animation_upload_due;
+  const bool rabbit_mesh_changed =
+      rabbit_update.structural_changed || rabbit_update.animation_changed;
   const bool dynamic_mesh_update_needed =
       fox_moved ||
       fox_animation_changed ||
       owl_changed ||
       gameplay_mesh_changed ||
       squirrel_mesh_changed ||
+      rabbit_mesh_changed ||
       conversation_started ||
       conversation_camera_changed ||
       !squirrel_completion_events_.empty() ||
@@ -550,6 +588,7 @@ void App::rebuild_dynamic_mesh() {
   append_mesh(dynamic_mesh_, fox_mesh_);
   firefly_loop_.append_dynamic_mesh(dynamic_mesh_, fox_controller_.position(), fox_controller_.heading());
   squirrel_quest_.append_dynamic_mesh(dynamic_mesh_, fox_controller_.position());
+  rabbit_burrows_.append_dynamic_mesh(dynamic_mesh_, fox_controller_.position());
   append_owl_perch_mesh(dynamic_mesh_, owl_encounter_.perch_position(), owl_encounter_.perch_heading());
   if (owl_encounter_.return_perch_visible()) {
     append_owl_perch_mesh(dynamic_mesh_,
@@ -589,7 +628,7 @@ void App::dev_deposit_carried_fireflies() {
 }
 
 void App::update_lantern_hud() {
-  char text[128] = {};
+  char text[160] = {};
   int written = 0;
   if (lantern_hud_revealed_) {
     written = std::snprintf(text,
@@ -614,6 +653,15 @@ void App::update_lantern_hud() {
                   written > 0 ? "\n" : "",
                   squirrel_quest_.active_collected_acorns(),
                   squirrel_quest_.active_required_acorns());
+  }
+  const int prompt_offset = static_cast<int>(std::strlen(text));
+  if (rabbit_burrows_.knock_prompt_visible(fox_controller_.position()) &&
+      prompt_offset >= 0 &&
+      prompt_offset < static_cast<int>(sizeof(text))) {
+    std::snprintf(text + prompt_offset,
+                  sizeof(text) - static_cast<std::size_t>(prompt_offset),
+                  "%sA: Knock",
+                  prompt_offset > 0 ? "\n" : "");
   }
   subtitles_set_hud_text(text);
 }

@@ -30,66 +30,10 @@ struct Host {
   bool touch_pause_held = false;
   bool gamepad_action_held = false;
   bool gamepad_pause_held = false;
-  bool gamepad_l_held = false;
-  bool gamepad_r_held = false;
-  bool gamepad_zl_held = false;
-  bool gamepad_zr_held = false;
   bool mouse_down = false;
 };
 
 Host g_host;
-
-EM_JS(int, poll_web_gamepad, (float* axes, int* buttons), {
-  if (!navigator.getGamepads) {
-    return 0;
-  }
-
-  var pads = navigator.getGamepads();
-  for (var i = 0; i < pads.length; ++i) {
-    var pad = pads[i];
-    if (!pad || !pad.connected) {
-      continue;
-    }
-
-    function axis(index) {
-      if (!pad.axes || pad.axes.length <= index) {
-        return 0;
-      }
-      var value = pad.axes[index] || 0;
-      return Number.isFinite(value) ? value : 0;
-    }
-
-    function pressed(index) {
-      if (!pad.buttons || pad.buttons.length <= index) {
-        return false;
-      }
-      var button = pad.buttons[index];
-      if (typeof button === "object") {
-        return button.pressed || button.value > 0.5;
-      }
-      return button > 0.5;
-    }
-
-    HEAPF32[(axes >> 2) + 0] = axis(0);
-    HEAPF32[(axes >> 2) + 1] = axis(1);
-    HEAPF32[(axes >> 2) + 2] = axis(2);
-    HEAPF32[(axes >> 2) + 3] = axis(3);
-
-    HEAP32[(buttons >> 2) + 0] = pressed(12) ? 1 : 0;
-    HEAP32[(buttons >> 2) + 1] = pressed(13) ? 1 : 0;
-    HEAP32[(buttons >> 2) + 2] = pressed(14) ? 1 : 0;
-    HEAP32[(buttons >> 2) + 3] = pressed(15) ? 1 : 0;
-    HEAP32[(buttons >> 2) + 4] = (pressed(0) || pressed(1)) ? 1 : 0;
-    HEAP32[(buttons >> 2) + 5] = (pressed(8) || pressed(9)) ? 1 : 0;
-    HEAP32[(buttons >> 2) + 6] = pressed(4) ? 1 : 0;
-    HEAP32[(buttons >> 2) + 7] = pressed(5) ? 1 : 0;
-    HEAP32[(buttons >> 2) + 8] = pressed(6) ? 1 : 0;
-    HEAP32[(buttons >> 2) + 9] = pressed(7) ? 1 : 0;
-    return 1;
-  }
-
-  return 0;
-});
 
 float clamp_axis(float value) {
   return std::max(-1.0f, std::min(1.0f, value));
@@ -97,6 +41,90 @@ float clamp_axis(float value) {
 
 float dominant_axis(float current, float candidate) {
   return std::abs(candidate) > std::abs(current) ? candidate : current;
+}
+
+bool gamepad_button_down(const EmscriptenGamepadEvent& pad, int index) {
+  return index >= 0 &&
+      index < pad.numButtons &&
+      (pad.digitalButton[index] || pad.analogButton[index] > 0.5);
+}
+
+float gamepad_axis(const EmscriptenGamepadEvent& pad, int index) {
+  if (index < 0 || index >= pad.numAxes) {
+    return 0.0f;
+  }
+  const double value = pad.axis[index];
+  return std::isfinite(value) ? static_cast<float>(value) : 0.0f;
+}
+
+void merge_gamepad_axis(float* axes, int index, float value) {
+  axes[index] = dominant_axis(axes[index], value);
+}
+
+void merge_gamepad_button(int* buttons, int index, bool down) {
+  if (down) {
+    buttons[index] = 1;
+  }
+}
+
+bool poll_web_gamepad(float* axes, int* buttons) {
+  static bool sample_error_logged = false;
+  static double no_gamepads_log_time_ms = -3000.0;
+  static bool seen_gamepad[16] = {};
+
+  const EMSCRIPTEN_RESULT sample_result = emscripten_sample_gamepad_data();
+  if (sample_result != EMSCRIPTEN_RESULT_SUCCESS &&
+      sample_result != EMSCRIPTEN_RESULT_DEFERRED &&
+      !sample_error_logged) {
+    std::printf("[probable-disco] emscripten_sample_gamepad_data failed: %d\n", sample_result);
+    sample_error_logged = true;
+  }
+
+  const int gamepad_count = emscripten_get_num_gamepads();
+  bool found = false;
+  for (int i = 0; i < gamepad_count; ++i) {
+    EmscriptenGamepadEvent pad = {};
+    const EMSCRIPTEN_RESULT status_result = emscripten_get_gamepad_status(i, &pad);
+    if (status_result != EMSCRIPTEN_RESULT_SUCCESS || !pad.connected) {
+      continue;
+    }
+
+    found = true;
+    if (i >= 0 && i < static_cast<int>(sizeof(seen_gamepad) / sizeof(seen_gamepad[0])) && !seen_gamepad[i]) {
+      std::printf("[probable-disco] Emscripten gamepad detected index %d id \"%s\" mapping \"%s\" axes %d buttons %d\n",
+                  pad.index,
+                  pad.id,
+                  pad.mapping,
+                  pad.numAxes,
+                  pad.numButtons);
+      seen_gamepad[i] = true;
+    }
+
+    merge_gamepad_axis(axes, 0, gamepad_axis(pad, 0));
+    merge_gamepad_axis(axes, 1, gamepad_axis(pad, 1));
+    merge_gamepad_axis(axes, 2, gamepad_axis(pad, 2));
+    merge_gamepad_axis(axes, 3, gamepad_axis(pad, 3));
+
+    const float dpad_x = gamepad_axis(pad, 6);
+    const float dpad_y = gamepad_axis(pad, 7);
+    merge_gamepad_button(buttons, 0, gamepad_button_down(pad, 12) || dpad_y < -0.5f);
+    merge_gamepad_button(buttons, 1, gamepad_button_down(pad, 13) || dpad_y > 0.5f);
+    merge_gamepad_button(buttons, 2, gamepad_button_down(pad, 14) || dpad_x < -0.5f);
+    merge_gamepad_button(buttons, 3, gamepad_button_down(pad, 15) || dpad_x > 0.5f);
+    merge_gamepad_button(buttons, 4, gamepad_button_down(pad, 0) || gamepad_button_down(pad, 1));
+    merge_gamepad_button(buttons, 5, gamepad_button_down(pad, 8) || gamepad_button_down(pad, 9));
+  }
+
+  if (!found) {
+    const double now_ms = emscripten_get_now();
+    if (now_ms - no_gamepads_log_time_ms >= 3000.0) {
+      std::printf("[probable-disco] No usable Emscripten gamepads; reported count %d. "
+                  "Focus the page and press a controller button to unlock browser gamepad input.\n",
+                  gamepad_count);
+      no_gamepads_log_time_ms = now_ms;
+    }
+  }
+  return found;
 }
 
 void resize_canvas(Host& host) {
@@ -185,16 +213,26 @@ EM_BOOL mouse_move_callback(int, const EmscriptenMouseEvent* event, void* user_d
   return EM_TRUE;
 }
 
+EM_BOOL gamepad_event_callback(int event_type, const EmscriptenGamepadEvent* event, void*) {
+  const char* name = event_type == EMSCRIPTEN_EVENT_GAMEPADCONNECTED
+      ? "connected"
+      : "disconnected";
+  std::printf("[probable-disco] Emscripten gamepad %s index %d id \"%s\" mapping \"%s\" axes %d buttons %d\n",
+              name,
+              event->index,
+              event->id,
+              event->mapping,
+              event->numAxes,
+              event->numButtons);
+  return EM_FALSE;
+}
+
 void apply_gamepad_input(Host& host, voxel::CameraInput& input) {
   float axes[4] = {};
-  int buttons[10] = {};
+  int buttons[6] = {};
   if (poll_web_gamepad(axes, buttons) == 0) {
     host.gamepad_action_held = false;
     host.gamepad_pause_held = false;
-    host.gamepad_l_held = false;
-    host.gamepad_r_held = false;
-    host.gamepad_zl_held = false;
-    host.gamepad_zr_held = false;
     return;
   }
 
@@ -205,32 +243,15 @@ void apply_gamepad_input(Host& host, voxel::CameraInput& input) {
 
   const bool gamepad_action = buttons[4] != 0;
   const bool gamepad_pause = buttons[5] != 0;
-  const bool gamepad_l = buttons[6] != 0;
-  const bool gamepad_r = buttons[7] != 0;
-  const bool gamepad_zl = buttons[8] != 0;
-  const bool gamepad_zr = buttons[9] != 0;
-
-  if (gamepad_l && !host.gamepad_l_held) {
-    host.app.set_gameplay_light_limit(host.app.gameplay_light_limit() - 1);
-    std::printf("dev light limit %d\n", host.app.gameplay_light_limit());
-  }
-  if (gamepad_r && !host.gamepad_r_held) {
-    host.app.set_gameplay_light_limit(host.app.gameplay_light_limit() + 1);
-    std::printf("dev light limit %d\n", host.app.gameplay_light_limit());
-  }
-  if (gamepad_zl && !host.gamepad_zl_held) {
-    host.app.dev_collect_active_fireflies();
-    std::printf("dev collected active fireflies\n");
-  }
-  if (gamepad_zr && !host.gamepad_zr_held) {
-    host.app.dev_deposit_carried_fireflies();
-    std::printf("dev deposited carried fireflies\n");
-  }
 
   input.forward = input.forward || buttons[0] != 0;
   input.back = input.back || buttons[1] != 0;
   input.left = input.left || buttons[2] != 0;
   input.right = input.right || buttons[3] != 0;
+  input.forward = input.forward || left_y < 0.0f;
+  input.back = input.back || left_y > 0.0f;
+  input.left = input.left || left_x < 0.0f;
+  input.right = input.right || left_x > 0.0f;
   input.action_held = input.action_held || gamepad_action;
   input.action_pressed = input.action_pressed || (gamepad_action && !host.gamepad_action_held);
   input.interact = input.interact || gamepad_action;
@@ -238,10 +259,6 @@ void apply_gamepad_input(Host& host, voxel::CameraInput& input) {
   input.pause_pressed = input.pause_pressed || (gamepad_pause && !host.gamepad_pause_held);
   host.gamepad_action_held = gamepad_action;
   host.gamepad_pause_held = gamepad_pause;
-  host.gamepad_l_held = gamepad_l;
-  host.gamepad_r_held = gamepad_r;
-  host.gamepad_zl_held = gamepad_zl;
-  host.gamepad_zr_held = gamepad_zr;
 
   input.move_x = dominant_axis(input.move_x, left_x);
   input.move_y = dominant_axis(input.move_y, left_y);
@@ -344,6 +361,8 @@ int main() {
   emscripten_set_mousedown_callback("#canvas", &g_host, EM_TRUE, mouse_button_callback);
   emscripten_set_mouseup_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, &g_host, EM_TRUE, mouse_button_callback);
   emscripten_set_mousemove_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, &g_host, EM_TRUE, mouse_move_callback);
+  emscripten_set_gamepadconnected_callback(nullptr, EM_FALSE, gamepad_event_callback);
+  emscripten_set_gamepaddisconnected_callback(nullptr, EM_FALSE, gamepad_event_callback);
 
   g_host.last_time_ms = emscripten_get_now();
   emscripten_set_main_loop_arg(frame, &g_host, 0, EM_TRUE);

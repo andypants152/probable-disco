@@ -168,6 +168,25 @@
           }
         }
 
+        function describeGamepad(gamepad) {
+          return {
+            index: gamepad.index,
+            id: gamepad.id,
+            mapping: gamepad.mapping,
+            axes: gamepad.axes ? gamepad.axes.length : 0,
+            buttons: gamepad.buttons ? gamepad.buttons.length : 0,
+            connected: gamepad.connected,
+          };
+        }
+
+        window.addEventListener("gamepadconnected", (event) => {
+          console.info("[probable-disco] gamepadconnected", describeGamepad(event.gamepad));
+        });
+
+        window.addEventListener("gamepaddisconnected", (event) => {
+          console.info("[probable-disco] gamepaddisconnected", describeGamepad(event.gamepad));
+        });
+
         function enableTouchControls() {
           root.classList.add("touch-enabled");
         }
