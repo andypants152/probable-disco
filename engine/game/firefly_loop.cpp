@@ -68,6 +68,7 @@ constexpr float kFireflyClusterRadius = kLanternSpawnClearRadius;
 constexpr float kFireflyHeight = 2.65f;
 constexpr float kDepositInterval = 0.16f;
 constexpr float kLanternLightPulseSeconds = kLanternLightPulseDuration;
+constexpr float kLanternSurfaceHeightOffset = 1.03f;
 constexpr float kLanternSpiralAngleStep = 0.78f;
 constexpr float kLanternSpiralInitialAngle = -0.68f;
 constexpr float kLanternSpiralBaseRadius = 13.5f;
@@ -516,7 +517,7 @@ Vec3 FireflyLoop::lantern_position_for_sequence(const TerrainGenerator& generato
                 base_anchor.x,
                 base_anchor.z);
 #endif
-    return terrain_position(generator, base_anchor, 0.10f);
+    return terrain_position(generator, base_anchor, kLanternSurfaceHeightOffset);
   }
 
   const std::uint32_t search_seed = hash_u32(terrain_seed_fingerprint(generator) ^
@@ -544,7 +545,7 @@ Vec3 FireflyLoop::lantern_position_for_sequence(const TerrainGenerator& generato
                 anchor.x,
                 anchor.z);
 #endif
-    return terrain_position(generator, anchor, 0.10f);
+    return terrain_position(generator, anchor, kLanternSurfaceHeightOffset);
   }
 
 #if defined(VOXEL_DEBUG_LANTERN_PLACEMENT)
@@ -555,7 +556,7 @@ Vec3 FireflyLoop::lantern_position_for_sequence(const TerrainGenerator& generato
               base_anchor.x,
               base_anchor.z);
 #endif
-  return terrain_position(generator, base_anchor, 0.10f);
+  return terrain_position(generator, base_anchor, kLanternSurfaceHeightOffset);
 }
 
 void FireflyLoop::activate_lantern(const TerrainGenerator& generator, int sequence) {

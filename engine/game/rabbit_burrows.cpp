@@ -17,7 +17,7 @@ namespace {
 constexpr float kTwoPi = 6.28318530717958647692f;
 constexpr float kBurrowDiscoverRadius = 110.0f;
 constexpr float kBurrowRenderDistance = 54.0f;
-constexpr float kBurrowInteractRadius = 2.6f;
+constexpr float kBurrowInteractRadius = 4.25f;
 constexpr float kCarrotPatchRenderDistance = 46.0f;
 constexpr float kCarrotPatchInteractRadius = 2.35f;
 constexpr float kBurrowPopSeconds = 0.45f;
@@ -533,19 +533,39 @@ void RabbitBurrows::append_dynamic_mesh(Mesh& mesh, Vec3 fox_position, float fox
 const char* RabbitBurrows::interaction_prompt(Vec3 fox_position) const {
   if (carried_carrots_ > 0 &&
       nearest_hungry_popped_burrow(fox_position, kBurrowInteractRadius) != nullptr) {
-    return "A: Give carrot";
+    return "Press A to give carrot";
   }
   if (carried_carrots_ == 0 &&
       nearest_pullable_patch(fox_position, kCarrotPatchInteractRadius) != nullptr) {
-    return "A: Pull carrot";
+    return "Press A to pull carrot";
   }
   if (nearest_knockable_burrow(fox_position, kBurrowInteractRadius) != nullptr) {
-    return "A: Knock";
+    return "Press A to knock";
   }
   if (nearest_fed_burrow(fox_position, kBurrowInteractRadius) != nullptr) {
-    return "A: Chat";
+    return "Press A to chat";
   }
   return nullptr;
+}
+
+bool RabbitBurrows::blocks_landmark_spawn(Vec3 position, float radius) const {
+  for (const Burrow& burrow : burrows_) {
+    if (!burrow.active) {
+      continue;
+    }
+    if (horizontal_distance(position, burrow.position) <= radius) {
+      return true;
+    }
+  }
+  for (const CarrotPatch& patch : carrot_patches_) {
+    if (!patch.active || patch.carrots_remaining <= 0) {
+      continue;
+    }
+    if (horizontal_distance(position, patch.position) <= radius) {
+      return true;
+    }
+  }
+  return false;
 }
 
 bool RabbitBurrows::rabbit_position(std::uint32_t rabbit_id, Vec3& position) const {

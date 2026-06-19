@@ -4,6 +4,9 @@
 
 namespace voxel {
 
+class FireflyLoop;
+class RabbitBurrows;
+class SquirrelQuest;
 class TerrainGenerator;
 
 class OwlEncounter {
@@ -20,8 +23,13 @@ class OwlEncounter {
   void init(const TerrainGenerator& generator);
   bool update(float dt, const TerrainGenerator& generator, Vec3 fox_position, bool interact_pressed);
   bool schedule_return(const TerrainGenerator& generator,
-                       Vec3 anchor_position,
+                       const FireflyLoop& firefly_loop,
+                       const SquirrelQuest& squirrel_quest,
+                       const RabbitBurrows& rabbit_burrows,
+                       Vec3 activity_center,
                        Vec3 fox_position,
+                       Vec3 fox_forward,
+                       float activity_clear_radius,
                        const char* line);
   bool consume_dialogue_event(DialogueEvent& event);
 

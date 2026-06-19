@@ -40,6 +40,7 @@ class RabbitBurrows {
 
   void append_dynamic_mesh(Mesh& mesh, Vec3 fox_position, float fox_heading) const;
   const char* interaction_prompt(Vec3 fox_position) const;
+  bool blocks_landmark_spawn(Vec3 position, float radius) const;
   bool rabbit_position(std::uint32_t rabbit_id, Vec3& position) const;
   void drain_dialogue_events(std::vector<DialogueEvent>& events);
 

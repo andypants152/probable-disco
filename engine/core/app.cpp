@@ -21,7 +21,9 @@ constexpr float kCameraDistance = 13.0f;
 constexpr float kCameraTargetHeight = 1.35f;
 constexpr float kSquirrelAnimationUploadInterval = 0.10f;
 constexpr float kGameplayAnimationUploadInterval = 0.05f;
-constexpr float kOwlFlybyQuietSeconds = 0.65f;
+constexpr int kSquirrelsPerOwlReturn = 5;
+constexpr float kOwlReturnClearRadius = 18.0f;
+constexpr float kOwlReturnClearBuffer = 4.0f;
 constexpr std::uint32_t kOwlSpeakerId = 0x0f11u;
 
 using Clock = std::chrono::steady_clock;
@@ -62,17 +64,17 @@ std::uint32_t hash_u32(std::uint32_t value) {
   return value;
 }
 
-const char* owl_flyby_line_for_milestone(int lantern_count) {
-  if (lantern_count == 5) {
+const char* owl_return_line_for_squirrel_count(int squirrel_count) {
+  if (squirrel_count == 5) {
     return "You are farther than you think.";
   }
-  if (lantern_count == 10) {
+  if (squirrel_count == 10) {
     return "Endless things teach slowly.";
   }
-  if (lantern_count == 15) {
+  if (squirrel_count == 15) {
     return "A path is not always underfoot.";
   }
-  if (lantern_count == 20) {
+  if (squirrel_count == 20) {
     return "The dark remembers your light.";
   }
 
@@ -84,7 +86,7 @@ const char* owl_flyby_line_for_milestone(int lantern_count) {
       "Some lights are for being found.",
       "The forest has begun to recognize you.",
   }};
-  const std::uint32_t bucket = static_cast<std::uint32_t>(std::max(0, lantern_count / 5));
+  const std::uint32_t bucket = static_cast<std::uint32_t>(std::max(0, squirrel_count / kSquirrelsPerOwlReturn));
   return kLines[static_cast<std::size_t>(hash_u32(bucket ^ 0x0f11f1b5u) % kLines.size())];
 }
 
@@ -104,9 +106,10 @@ bool App::init(Renderer& renderer) {
   rabbit_burrows_.init(generator_, firefly_loop_, squirrel_quest_);
   lantern_hud_revealed_ = false;
   squirrel_hud_revealed_ = false;
-  highest_owl_flyby_lantern_count_ = 0;
-  pending_owl_flyby_lantern_count_ = 0;
-  owl_flyby_quiet_seconds_ = 0.0f;
+  squirrel_help_count_ = 0;
+  next_owl_return_squirrel_count_ = kSquirrelsPerOwlReturn;
+  owl_return_pending_ = false;
+  owl_return_activity_center_ = {};
   rebuild_dynamic_mesh();
   render_frame_commands_.commands.reserve(3);
 
@@ -204,7 +207,6 @@ void App::frame(Renderer& renderer, const CameraInput& input) {
       fox_position,
       gameplay_confirm_pressed,
       !conversation_controller_.active() && !conversation_started);
-  update_owl_flyby_milestone(firefly_loop_.active_lantern_index());
   OwlEncounter::DialogueEvent owl_dialogue = {};
   if (owl_encounter_.consume_dialogue_event(owl_dialogue)) {
     conversation_started = begin_owl_dialogue(owl_dialogue,
@@ -288,6 +290,7 @@ void App::frame(Renderer& renderer, const CameraInput& input) {
   }
   squirrel_completion_events_.clear();
   squirrel_quest_.drain_completion_events(squirrel_completion_events_);
+  update_owl_return_progress(squirrel_completion_events_);
   for (const SquirrelQuest::CompletionEvent& event : squirrel_completion_events_) {
     firefly_loop_.add_squirrel_completion_bonus(event.position);
   }
@@ -308,10 +311,10 @@ void App::frame(Renderer& renderer, const CameraInput& input) {
       !squirrel_dialogue_events_.empty() ||
       !squirrel_completion_events_.empty();
   if (!conversation_controller_.active() && !conversation_started) {
-    conversation_started = maybe_schedule_owl_flyby(fox_position,
-                                                    gameplay_input.delta_time,
-                                                    squirrel_events_waiting);
-    if (conversation_started) {
+    const bool owl_return_started = maybe_schedule_owl_return(fox_position, squirrel_events_waiting);
+    if (owl_return_started) {
+      gameplay_changed = true;
+      gameplay_structural_changed = true;
       OwlEncounter::DialogueEvent return_dialogue = {};
       if (owl_encounter_.consume_dialogue_event(return_dialogue)) {
         conversation_started = begin_owl_dialogue(return_dialogue,
@@ -488,21 +491,25 @@ void App::shutdown(Renderer& renderer) {
   initialized_ = false;
 }
 
-void App::update_owl_flyby_milestone(int lit_lantern_count) {
-  const int milestone = (lit_lantern_count / 5) * 5;
-  if (milestone < 5 ||
-      pending_owl_flyby_lantern_count_ != 0 ||
-      milestone <= highest_owl_flyby_lantern_count_) {
-    return;
+void App::update_owl_return_progress(const std::vector<SquirrelQuest::CompletionEvent>& completion_events) {
+  for (const SquirrelQuest::CompletionEvent& event : completion_events) {
+    ++squirrel_help_count_;
+    owl_return_activity_center_ = event.position;
+    if (squirrel_help_count_ >= next_owl_return_squirrel_count_ && !owl_return_pending_) {
+      owl_return_pending_ = true;
+#if defined(VOXEL_DEBUG_OWL_RETURN)
+      std::printf("owl return queued squirrels %d activity %.2f %.2f %.2f\n",
+                  squirrel_help_count_,
+                  owl_return_activity_center_.x,
+                  owl_return_activity_center_.y,
+                  owl_return_activity_center_.z);
+#endif
+    }
   }
-  pending_owl_flyby_lantern_count_ = milestone;
-  owl_flyby_quiet_seconds_ = 0.0f;
 }
 
-bool App::maybe_schedule_owl_flyby(Vec3 fox_position,
-                                   float dt,
-                                   bool squirrel_events_waiting) {
-  if (pending_owl_flyby_lantern_count_ == 0 || !owl_encounter_.gone()) {
+bool App::maybe_schedule_owl_return(Vec3 fox_position, bool squirrel_events_waiting) {
+  if (!owl_return_pending_ || !owl_encounter_.gone()) {
     return false;
   }
   if (conversation_controller_.active() ||
@@ -510,25 +517,27 @@ bool App::maybe_schedule_owl_flyby(Vec3 fox_position,
       squirrel_quest_.active_quest_needs_acorns() ||
       squirrel_quest_.fox_near_auto_talk_squirrel(fox_position) ||
       subtitles_visible()) {
-    owl_flyby_quiet_seconds_ = 0.0f;
     return false;
   }
 
-  owl_flyby_quiet_seconds_ += std::max(0.0f, std::min(dt, 0.10f));
-  if (owl_flyby_quiet_seconds_ < kOwlFlybyQuietSeconds) {
+  if (horizontal_distance(fox_position, owl_return_activity_center_) <=
+      kOwlReturnClearRadius + kOwlReturnClearBuffer) {
     return false;
   }
 
-  const Vec3 forward_anchor = firefly_loop_.objective_position(fox_position);
   const bool scheduled = owl_encounter_.schedule_return(
       generator_,
-      forward_anchor,
+      firefly_loop_,
+      squirrel_quest_,
+      rabbit_burrows_,
+      owl_return_activity_center_,
       fox_position,
-      owl_flyby_line_for_milestone(pending_owl_flyby_lantern_count_));
+      fox_controller_.forward(),
+      kOwlReturnClearRadius,
+      owl_return_line_for_squirrel_count(next_owl_return_squirrel_count_));
   if (scheduled) {
-    highest_owl_flyby_lantern_count_ = pending_owl_flyby_lantern_count_;
-    pending_owl_flyby_lantern_count_ = 0;
-    owl_flyby_quiet_seconds_ = 0.0f;
+    owl_return_pending_ = false;
+    next_owl_return_squirrel_count_ += kSquirrelsPerOwlReturn;
   }
   return scheduled;
 }
@@ -654,16 +663,9 @@ void App::update_lantern_hud() {
                   squirrel_quest_.active_collected_acorns(),
                   squirrel_quest_.active_required_acorns());
   }
-  const int prompt_offset = static_cast<int>(std::strlen(text));
   const char* rabbit_prompt = rabbit_burrows_.interaction_prompt(fox_controller_.position());
-  if (rabbit_prompt != nullptr &&
-      prompt_offset >= 0 &&
-      prompt_offset < static_cast<int>(sizeof(text))) {
-    std::snprintf(text + prompt_offset,
-                  sizeof(text) - static_cast<std::size_t>(prompt_offset),
-                  "%s%s",
-                  prompt_offset > 0 ? "\n" : "",
-                  rabbit_prompt);
+  if (rabbit_prompt != nullptr && !subtitles_visible()) {
+    subtitles_show(rabbit_prompt, 0.45f);
   }
   subtitles_set_hud_text(text);
 }

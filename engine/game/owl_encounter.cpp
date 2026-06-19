@@ -2,8 +2,12 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 
 #include "core/audio.h"
+#include "game/firefly_loop.h"
+#include "game/rabbit_burrows.h"
+#include "game/squirrel_quest.h"
 #include "world/generator.h"
 #include "core/subtitles.h"
 #include "world/mesher.h"
@@ -19,14 +23,16 @@ constexpr float kOwlFlyAwayHeading = 0.0f;
 constexpr float kOwlTalkSeconds = 5.35f;
 constexpr float kOwlFlySeconds = 2.6f;
 constexpr float kOwlSecondLineTime = 1.95f;
-constexpr float kOwlReturnArriveSeconds = 1.90f;
+constexpr float kOwlReturnArriveSeconds = 2.0f;
 constexpr float kOwlReturnLineSeconds = 2.45f;
-constexpr float kOwlReturnFlySeconds = 1.85f;
+constexpr float kOwlReturnFlySeconds = 1.6f;
 constexpr float kOwlReturnPerchHeight = 1.78f;
-constexpr float kOwlReturnMinLanternDistance = 8.8f;
-constexpr float kOwlReturnMaxLanternDistance = 14.2f;
-constexpr float kOwlReturnFoxClearance = 5.0f;
-constexpr int kOwlReturnCandidateCount = 40;
+constexpr float kOwlReturnMinDistance = 20.0f;
+constexpr float kOwlReturnMaxDistance = 35.0f;
+constexpr float kOwlReturnFoxClearance = 16.0f;
+constexpr float kOwlReturnActivityBuffer = 4.0f;
+constexpr float kOwlReturnObstacleClearance = 3.0f;
+constexpr int kOwlReturnCandidateCount = 48;
 constexpr int kWorldDressingStep = 6;
 constexpr int kMushroomCandidateStep = 3;
 constexpr float kMushroomSpawnChance = 0.13f;
@@ -38,6 +44,12 @@ constexpr float kOwlMaxHeadYaw = 3.14159265358979323846f;
 constexpr float kOwlMaxHeadPitch = 0.34f;
 constexpr float kOwlIdleRufflePeriod = 6.4f;
 constexpr float kOwlBlinkPeriod = 4.8f;
+
+#if defined(VOXEL_DEBUG_OWL_RETURN)
+#define OWL_RETURN_LOG(...) std::printf(__VA_ARGS__)
+#else
+#define OWL_RETURN_LOG(...) ((void)0)
+#endif
 
 float smoothstep(float value) {
   value = std::max(0.0f, std::min(1.0f, value));
@@ -167,6 +179,27 @@ bool has_nearby_solid_above_ground(const TerrainGenerator& generator, int cell_x
   return false;
 }
 
+bool has_nearby_tree(const TerrainGenerator& generator, int cell_x, int cell_z, int min_radius, int max_radius) {
+  for (int dz = -max_radius; dz <= max_radius; ++dz) {
+    for (int dx = -max_radius; dx <= max_radius; ++dx) {
+      const int distance_sq = dx * dx + dz * dz;
+      if (distance_sq < min_radius * min_radius || distance_sq > max_radius * max_radius) {
+        continue;
+      }
+      const int sample_x = cell_x + dx;
+      const int sample_z = cell_z + dz;
+      const int ground_y = generator.terrain_height(sample_x, sample_z);
+      for (int y = ground_y + 1; y <= ground_y + 12; ++y) {
+        const VoxelType type = generator.voxel_at(sample_x, y, sample_z).type;
+        if (type == VoxelType::Bark || type == VoxelType::Leaves) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
 bool dressing_origin_for_grid(int grid_x, int grid_z, int& world_x, int& world_z, float& seed) {
   seed = hash01(grid_x, grid_z, 0xdec042u);
   const float ox = (hash01(grid_x + 300, grid_z - 300, 0xdec042u) - 0.5f) * 3.6f;
@@ -260,17 +293,26 @@ bool near_likely_mushroom(float x, float z, float clearance) {
   return false;
 }
 
+Vec3 perched_position(const TerrainGenerator& generator, float x, float z) {
+  return {x, interpolated_terrain_height(generator, x, z) + kOwlReturnPerchHeight, z};
+}
+
 bool can_place_return_perch(const TerrainGenerator& generator,
-                            Vec3 anchor_position,
+                            const FireflyLoop& firefly_loop,
+                            const SquirrelQuest& squirrel_quest,
+                            const RabbitBurrows& rabbit_burrows,
+                            Vec3 activity_center,
                             Vec3 fox_position,
+                            float activity_clear_radius,
                             float x,
                             float z) {
   const Vec3 candidate = {x, 0.0f, z};
-  const float anchor_distance = horizontal_distance(candidate, anchor_position);
-  if (anchor_distance < kOwlReturnMinLanternDistance || anchor_distance > kOwlReturnMaxLanternDistance) {
+  const float fox_distance = horizontal_distance(candidate, fox_position);
+  if (fox_distance < kOwlReturnMinDistance || fox_distance > kOwlReturnMaxDistance) {
     return false;
   }
-  if (horizontal_distance(candidate, fox_position) < kOwlReturnFoxClearance) {
+  if (fox_distance < kOwlReturnFoxClearance ||
+      horizontal_distance(candidate, activity_center) <= activity_clear_radius + kOwlReturnActivityBuffer) {
     return false;
   }
   if (!is_clear_ground(generator, x, z, 5)) {
@@ -278,7 +320,21 @@ bool can_place_return_perch(const TerrainGenerator& generator,
   }
   const int cell_x = static_cast<int>(std::round(x));
   const int cell_z = static_cast<int>(std::round(z));
-  if (has_nearby_solid_above_ground(generator, cell_x, cell_z, 2, 5)) {
+  const int center_ground_y = generator.terrain_height(cell_x, cell_z);
+  for (int dz = -2; dz <= 2; ++dz) {
+    for (int dx = -2; dx <= 2; ++dx) {
+      if (std::abs(generator.terrain_height(cell_x + dx, cell_z + dz) - center_ground_y) > 1) {
+        return false;
+      }
+    }
+  }
+  if (has_nearby_solid_above_ground(generator, cell_x, cell_z, 1, 5)) {
+    return false;
+  }
+  const Vec3 perched = perched_position(generator, x, z);
+  if (firefly_loop.blocks_acorn_spawn(perched, kOwlReturnObstacleClearance) ||
+      squirrel_quest.blocks_landmark_spawn(perched, kOwlReturnObstacleClearance) ||
+      rabbit_burrows.blocks_landmark_spawn(perched, kOwlReturnObstacleClearance)) {
     return false;
   }
   if (near_major_dressing(x, z, 2.0f) || near_likely_mushroom(x, z, 1.8f)) {
@@ -287,8 +343,42 @@ bool can_place_return_perch(const TerrainGenerator& generator,
   return true;
 }
 
-Vec3 perched_position(const TerrainGenerator& generator, float x, float z) {
-  return {x, interpolated_terrain_height(generator, x, z) + kOwlReturnPerchHeight, z};
+bool can_place_fallback_return_perch(const TerrainGenerator& generator,
+                                     const FireflyLoop& firefly_loop,
+                                     const SquirrelQuest& squirrel_quest,
+                                     const RabbitBurrows& rabbit_burrows,
+                                     Vec3 activity_center,
+                                     Vec3 fox_position,
+                                     float activity_clear_radius,
+                                     float x,
+                                     float z) {
+  const Vec3 candidate = {x, 0.0f, z};
+  if (horizontal_distance(candidate, fox_position) < kOwlReturnMinDistance ||
+      horizontal_distance(candidate, activity_center) <= activity_clear_radius + kOwlReturnActivityBuffer) {
+    return false;
+  }
+  if (!is_clear_ground(generator, x, z, 5)) {
+    return false;
+  }
+  const Vec3 perched = perched_position(generator, x, z);
+  return !firefly_loop.blocks_acorn_spawn(perched, kOwlReturnObstacleClearance) &&
+         !squirrel_quest.blocks_landmark_spawn(perched, kOwlReturnObstacleClearance) &&
+         !rabbit_burrows.blocks_landmark_spawn(perched, kOwlReturnObstacleClearance);
+}
+
+float heading_toward(Vec3 from, Vec3 to) {
+  return std::atan2(to.x - from.x, to.z - from.z);
+}
+
+Vec3 horizontal_direction(Vec3 direction, Vec3 fallback) {
+  direction.y = 0.0f;
+  const float len = length(direction);
+  if (len <= 0.001f) {
+    fallback.y = 0.0f;
+    const float fallback_len = length(fallback);
+    return fallback_len > 0.001f ? fallback * (1.0f / fallback_len) : Vec3{0.0f, 0.0f, 1.0f};
+  }
+  return direction * (1.0f / len);
 }
 
 }  // namespace
@@ -384,7 +474,7 @@ bool OwlEncounter::update(float dt, const TerrainGenerator& generator, Vec3 fox_
     const Vec3 landing = return_perch_position_;
     position_ = return_start_position_ + (landing - return_start_position_) * t +
         Vec3{0.0f, std::sin(raw_t * 3.14159265358979323846f) * 1.35f, 0.0f};
-    heading_ = return_heading_;
+    heading_ = heading_toward(position_, landing);
     wing_pose_ = 0.34f + 0.66f * std::fabs(std::sin(timer_ * 18.0f));
     body_bob_ = 0.0f;
     blink_ = 0.0f;
@@ -393,6 +483,7 @@ bool OwlEncounter::update(float dt, const TerrainGenerator& generator, Vec3 fox_
       state_ = State::ReturnTalking;
       timer_ = 0.0f;
       position_ = return_perch_position_;
+      heading_ = return_heading_;
       wing_pose_ = 0.0f;
       dialogue_line_ = kReturnFlybyLine;
       pending_dialogue_line_ = kReturnFlybyLine;
@@ -413,7 +504,7 @@ bool OwlEncounter::update(float dt, const TerrainGenerator& generator, Vec3 fox_
     const float t = smoothstep(raw_t);
     position_ = return_perch_position_ + (return_fly_away_position_ - return_perch_position_) * t +
         Vec3{0.0f, 2.7f * t * t, 0.0f};
-    heading_ = lerp(return_heading_, kOwlFlyAwayHeading, smoothstep(raw_t));
+    heading_ = heading_toward(position_, return_fly_away_position_);
     wing_pose_ = 0.30f + 0.70f * std::fabs(std::sin(timer_ * 18.0f));
     body_bob_ = 0.0f;
     blink_ = 0.0f;
@@ -470,7 +561,9 @@ bool OwlEncounter::update(float dt, const TerrainGenerator& generator, Vec3 fox_
   const float head_follow_t = smoothstep(clamped(dt * 6.5f, 0.0f, 1.0f));
   head_yaw_ += shortest_angle_delta(head_yaw_, target_head_yaw) * head_follow_t;
   const float idle_head_nod =
-      (state_ == State::Waiting || state_ == State::Talking) ? std::sin(idle_timer_ * 1.08f) * 0.025f : 0.0f;
+      (state_ == State::Waiting || state_ == State::Talking)
+          ? std::sin(idle_timer_ * 1.08f) * 0.025f
+          : 0.0f;
   head_pitch_ = lerp(head_pitch_, target_head_pitch + idle_head_nod, head_follow_t);
 
   return previous_state != state_ ||
@@ -485,30 +578,54 @@ bool OwlEncounter::update(float dt, const TerrainGenerator& generator, Vec3 fox_
 }
 
 bool OwlEncounter::schedule_return(const TerrainGenerator& generator,
-                                   Vec3 anchor_position,
+                                   const FireflyLoop& firefly_loop,
+                                   const SquirrelQuest& squirrel_quest,
+                                   const RabbitBurrows& rabbit_burrows,
+                                   Vec3 activity_center,
                                    Vec3 fox_position,
+                                   Vec3 fox_forward,
+                                   float activity_clear_radius,
                                    const char* line) {
   if (state_ != State::Gone || return_perch_visible_ || line == nullptr || line[0] == '\0') {
     return false;
   }
 
-  const int anchor_x = static_cast<int>(std::round(anchor_position.x));
-  const int anchor_z = static_cast<int>(std::round(anchor_position.z));
+  const Vec3 forward = horizontal_direction(fox_forward, Vec3{0.0f, 0.0f, 1.0f});
+  const float forward_angle = std::atan2(forward.x, forward.z);
+  const int seed_x = static_cast<int>(std::round(activity_center.x + fox_position.x * 0.37f));
+  const int seed_z = static_cast<int>(std::round(activity_center.z + fox_position.z * 0.37f));
+  const float side_sign = hash01(seed_x, seed_z, 0x0f11b17du) < 0.5f ? -1.0f : 1.0f;
   float best_score = -100000.0f;
   Vec3 best_position = {};
   for (int i = 0; i < kOwlReturnCandidateCount; ++i) {
-    const float angle = hash01(anchor_x + i * 37, anchor_z - i * 19, 0x0f11cafeu) * 6.28318530718f;
-    const float radius = kOwlReturnMinLanternDistance +
-        hash01(anchor_x - i * 29, anchor_z + i * 41, 0x0f11f00du) *
-            (kOwlReturnMaxLanternDistance - kOwlReturnMinLanternDistance);
-    const float x = anchor_position.x + std::cos(angle) * radius;
-    const float z = anchor_position.z + std::sin(angle) * radius;
-    if (!can_place_return_perch(generator, anchor_position, fox_position, x, z)) {
+    const float side = i < kOwlReturnCandidateCount / 2 ? side_sign : -side_sign;
+    const float offset_t = hash01(seed_x + i * 37, seed_z - i * 19, 0x0f11cafeu);
+    const float angle_offset = (0.25f + offset_t * 0.25f) * 3.14159265358979323846f * side;
+    const float angle_jitter =
+        (hash01(seed_x - i * 11, seed_z + i * 13, 0x0f11a7e5u) - 0.5f) * 0.16f;
+    const float angle = forward_angle + angle_offset + angle_jitter;
+    const float radius = kOwlReturnMinDistance +
+        hash01(seed_x - i * 29, seed_z + i * 41, 0x0f11f00du) *
+            (kOwlReturnMaxDistance - kOwlReturnMinDistance);
+    const float x = fox_position.x + std::sin(angle) * radius;
+    const float z = fox_position.z + std::cos(angle) * radius;
+    if (!can_place_return_perch(generator,
+                                firefly_loop,
+                                squirrel_quest,
+                                rabbit_burrows,
+                                activity_center,
+                                fox_position,
+                                activity_clear_radius,
+                                x,
+                                z)) {
       continue;
     }
     const Vec3 candidate = perched_position(generator, x, z);
     const float fox_distance = horizontal_distance(candidate, fox_position);
-    const float score = 1.0f - std::fabs(radius - 11.2f) * 0.08f +
+    const int cell_x = static_cast<int>(std::round(x));
+    const int cell_z = static_cast<int>(std::round(z));
+    const float tree_bonus = has_nearby_tree(generator, cell_x, cell_z, 4, 9) ? 1.4f : 0.0f;
+    const float score = tree_bonus - std::fabs(radius - 27.0f) * 0.05f +
         std::min(fox_distance, 22.0f) * 0.015f +
         hash01(static_cast<int>(std::round(x)), static_cast<int>(std::round(z)), 0x0f114441u) * 0.18f;
     if (score > best_score) {
@@ -518,30 +635,68 @@ bool OwlEncounter::schedule_return(const TerrainGenerator& generator,
   }
 
   if (best_score < -99999.0f) {
-    return false;
+    float fallback_angle = forward_angle + side_sign * 0.38f * 3.14159265358979323846f;
+    float fallback_radius = 26.0f;
+    for (int i = 0; i < 16; ++i) {
+      const float side = i < 8 ? side_sign : -side_sign;
+      fallback_angle = forward_angle +
+          side * (0.30f + 0.035f * static_cast<float>(i % 8)) * 3.14159265358979323846f;
+      fallback_radius = 23.0f + static_cast<float>((i * 5) % 11);
+      const float x = fox_position.x + std::sin(fallback_angle) * fallback_radius;
+      const float z = fox_position.z + std::cos(fallback_angle) * fallback_radius;
+      if (can_place_fallback_return_perch(generator,
+                                          firefly_loop,
+                                          squirrel_quest,
+                                          rabbit_burrows,
+                                          activity_center,
+                                          fox_position,
+                                          activity_clear_radius,
+                                          x,
+                                          z)) {
+        best_position = perched_position(generator, x, z);
+        break;
+      }
+    }
+    if (best_position.y == 0.0f) {
+      best_position = perched_position(generator,
+                                       fox_position.x + std::sin(fallback_angle) * fallback_radius,
+                                       fox_position.z + std::cos(fallback_angle) * fallback_radius);
+    }
+    OWL_RETURN_LOG("owl return fallback perch x %.2f y %.2f z %.2f\n",
+                   best_position.x,
+                   best_position.y,
+                   best_position.z);
+  } else {
+    OWL_RETURN_LOG("owl return perch x %.2f y %.2f z %.2f score %.2f\n",
+                   best_position.x,
+                   best_position.y,
+                   best_position.z,
+                   best_score);
   }
 
   return_perch_position_ = best_position;
   return_line_ = line;
   return_heading_ = std::atan2(fox_position.x - return_perch_position_.x,
                                fox_position.z - return_perch_position_.z);
-  const Vec3 away_from_fox = normalize(Vec3{
+  const Vec3 away_from_fox = horizontal_direction(Vec3{
       return_perch_position_.x - fox_position.x,
       0.0f,
       return_perch_position_.z - fox_position.z,
-  });
-  const Vec3 arrival_direction = length(away_from_fox) > 0.001f ? away_from_fox : Vec3{0.0f, 0.0f, -1.0f};
-  return_start_position_ = return_perch_position_ + arrival_direction * 11.0f + Vec3{0.0f, 4.2f, 0.0f};
-  return_fly_away_position_ = return_perch_position_ + arrival_direction * 10.0f + Vec3{0.0f, 2.4f, 0.0f};
+  }, Vec3{0.0f, 0.0f, -1.0f});
+  return_start_position_ = return_perch_position_ + away_from_fox * 14.0f + Vec3{0.0f, 5.4f, 0.0f};
+  return_fly_away_position_ = return_perch_position_ + away_from_fox * 16.0f + Vec3{0.0f, 4.4f, 0.0f};
   position_ = return_start_position_;
-  heading_ = return_heading_;
+  heading_ = heading_toward(return_start_position_, return_perch_position_);
   state_ = State::ReturnArriving;
   timer_ = 0.0f;
-  dialogue_line_ = kReturnArrivalLine;
+  dialogue_line_ = 0;
   pending_dialogue_line_ = kReturnArrivalLine;
   prompt_visible_ = false;
   return_perch_visible_ = true;
   return_completed_ = false;
+  if (audio_ready_for_gameplay_sound()) {
+    audio_play_owl_appear();
+  }
   return true;
 }
 

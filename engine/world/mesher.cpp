@@ -288,14 +288,16 @@ PackedColor varied_bark_color(int world_x, int y, int world_z) {
   return base;
 }
 
-PackedColor varied_leaf_color(int world_x, int y, int world_z, int variant) {
+PackedColor varied_leaf_color(int world_x, int y, int world_z, int variant, bool lower_canopy) {
   const float roll = hash01_3(world_x + variant * 17, y - variant * 7, world_z + variant * 13, 0x1ea7d15cu);
-  PackedColor base = roll > 0.66f ? pack_rgba(45, 107, 65) : pack_rgba(52, 122, 73);
-  if (roll < 0.22f) {
-    base = pack_rgba(68, 137, 77);
+  PackedColor base = lower_canopy
+      ? (roll > 0.58f ? pack_rgba(36, 88, 54) : pack_rgba(45, 107, 65))
+      : (roll > 0.66f ? pack_rgba(45, 107, 65) : pack_rgba(56, 129, 75));
+  if (!lower_canopy && roll < 0.24f) {
+    base = pack_rgba(72, 145, 82);
   }
-  if (roll > 0.90f) {
-    base = pack_rgba(40, 89, 61);
+  if (lower_canopy && roll > 0.88f) {
+    base = pack_rgba(31, 76, 49);
   }
   return base;
 }
@@ -685,6 +687,7 @@ void append_leaf_visual(Mesh& mesh,
                         int y,
                         int world_z,
                         bool exposed,
+                        bool lower_canopy,
                         DetailBudget& budget) {
   const float hole_roll = hash01_3(world_x, y, world_z, 0x67617073u);
   if (!exposed || hole_roll > 0.985f || !allow_tree_detail(budget)) {
@@ -698,7 +701,7 @@ void append_leaf_visual(Mesh& mesh,
                     {static_cast<float>(world_x) + 1.0f - inset,
                     static_cast<float>(y) + 1.0f - inset,
                     static_cast<float>(world_z) + 1.0f - inset},
-                    varied_leaf_color(world_x, y, world_z, 0)});
+                    varied_leaf_color(world_x, y, world_z, 0, lower_canopy)});
 }
 
 void append_rock(Mesh& mesh, const TerrainGenerator& generator, int world_x, int world_z, float seed) {
@@ -1190,7 +1193,10 @@ Mesh build_world_mesh(const TerrainGenerator& generator,
             break;
           }
         }
-        append_leaf_visual(mesh, x, y, z, exposed, detail_budget);
+        const bool lower_canopy =
+            cache.render_voxel_type_at(generator, x, y + 1, z) == VoxelType::Leaves ||
+            cache.render_voxel_type_at(generator, x, y + 2, z) == VoxelType::Leaves;
+        append_leaf_visual(mesh, x, y, z, exposed, lower_canopy, detail_budget);
       }
     }
   }

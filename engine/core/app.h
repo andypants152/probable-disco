@@ -86,10 +86,8 @@ class App {
   void rebuild_gameplay_lights();
   void update_lantern_hud();
   void update_camera(const CameraInput& input);
-  void update_owl_flyby_milestone(int lit_lantern_count);
-  bool maybe_schedule_owl_flyby(Vec3 fox_position,
-                                float dt,
-                                bool squirrel_events_waiting);
+  void update_owl_return_progress(const std::vector<SquirrelQuest::CompletionEvent>& completion_events);
+  bool maybe_schedule_owl_return(Vec3 fox_position, bool squirrel_events_waiting);
   bool begin_owl_dialogue(const OwlEncounter::DialogueEvent& owl_dialogue,
                           Vec3 fox_position,
                           bool& gameplay_changed,
@@ -122,9 +120,10 @@ class App {
   bool previous_interact_down_ = false;
   bool lantern_hud_revealed_ = false;
   bool squirrel_hud_revealed_ = false;
-  int highest_owl_flyby_lantern_count_ = 0;
-  int pending_owl_flyby_lantern_count_ = 0;
-  float owl_flyby_quiet_seconds_ = 0.0f;
+  int squirrel_help_count_ = 0;
+  int next_owl_return_squirrel_count_ = 5;
+  bool owl_return_pending_ = false;
+  Vec3 owl_return_activity_center_ = {};
   FrameStats frame_stats_;
 };
 
